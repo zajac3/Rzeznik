@@ -45,6 +45,17 @@ export default function App() {
             background-color: #09090b !important;
             color: #f4f4f5 !important;
           }
+          /* Bezpieczne odstępy dla iPhone PWA (skrót na ekranie domowym) */
+          @supports (padding-top: env(safe-area-inset-top)) {
+            .app-header-safe {
+              padding-top: max(2rem, calc(env(safe-area-inset-top, 0px) + 1.25rem)) !important;
+            }
+          }
+          @media all and (display-mode: standalone) {
+            .app-header-safe {
+              padding-top: max(2.5rem, calc(env(safe-area-inset-top, 0px) + 1.25rem)) !important;
+            }
+          }
         `}</style>
 
         {/* Brutalist Header z logotypem obrazkowym */}
