@@ -449,11 +449,12 @@ export const StatsView: React.FC = () => {
               {/* Wykres Recharts */}
               <div className="mt-4 pt-2">
                 {exerciseChartData.length === 0 ? (
-                  <div className="py-12 text-center rounded-none bg-black border-2 border-dashed border-zinc-800">
-                    <p className="text-sm font-semibold text-zinc-300">
-                      Brak danych treningowych dla {currentExerciseObj?.name ?? 'wybranego ćwiczenia'}.
+                  <div className="py-10 px-6 text-center rounded-none bg-black/60 border border-zinc-800 flex flex-col items-center justify-center">
+                    <p className="text-sm font-semibold text-zinc-300 max-w-sm mx-auto leading-relaxed text-balance">
+                      Brak danych treningowych dla{' '}
+                      <span className="text-white font-bold">{currentExerciseObj?.name ?? 'wybranego ćwiczenia'}</span>.
                     </p>
-                    <p className="mt-1 text-xs text-zinc-400">
+                    <p className="mt-2 text-xs text-zinc-500 max-w-xs mx-auto leading-relaxed">
                       Wykonaj serię w zakładce Trening, aby wygenerować wykres.
                     </p>
                   </div>
@@ -677,11 +678,12 @@ export const StatsView: React.FC = () => {
             {/* Wykres Recharts dla 1RM */}
             <div className="mt-4 pt-1">
               {maxProgressionChartData.length === 0 ? (
-                <div className="py-10 text-center rounded-none bg-black border-2 border-dashed border-zinc-800">
-                  <p className="text-sm font-semibold text-zinc-300">
-                    Brak danych 1RM dla {currentMaxExerciseObj?.name ?? 'wybranego ćwiczenia'}.
+                <div className="py-10 px-6 text-center rounded-none bg-black/60 border border-zinc-800 flex flex-col items-center justify-center">
+                  <p className="text-sm font-semibold text-zinc-300 max-w-sm mx-auto leading-relaxed text-balance">
+                    Brak danych 1RM dla{' '}
+                    <span className="text-white font-bold">{currentMaxExerciseObj?.name ?? 'wybranego ćwiczenia'}</span>.
                   </p>
-                  <p className="mt-1 text-xs text-zinc-400">
+                  <p className="mt-2 text-xs text-zinc-500 max-w-xs mx-auto leading-relaxed">
                     Wykonaj trening z tym ćwiczeniem lub dodaj własny rekord w formularzu poniżej.
                   </p>
                 </div>
