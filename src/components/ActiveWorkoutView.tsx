@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  Plus,
   Trash2,
   Copy,
   Check,
@@ -116,6 +115,9 @@ export const ActiveWorkoutView: React.FC = () => {
 
   // Szukanie ostatniej zakończonej sesji tego samego rodzaju w historii
   const previousSessionSummary = useLiveQuery(async () => {
+    if (!dayData?.routine_day_id && (!dayData?.routine_day_name || dayData.routine_day_name.trim() === '')) {
+      return null;
+    }
     return await findLastWorkoutSessionOfType(
       selectedDate,
       dayData?.routine_day_id,
@@ -229,6 +231,7 @@ export const ActiveWorkoutView: React.FC = () => {
   }, [dayData, priorPRs]);
 
   const hasExercises = Boolean(dayData?.tasks && dayData.tasks.length > 0);
+  const hasTemplate = Boolean(dayData?.routine_day_id || (dayData?.routine_day_name && dayData.routine_day_name.trim() !== ''));
 
   return (
     <div className="space-y-4 max-w-xl mx-auto text-zinc-100 font-sans">
@@ -363,82 +366,84 @@ export const ActiveWorkoutView: React.FC = () => {
           </div>
         </div>
 
-        {/* Pasek akcji: Kopiowanie z poprzedniego treningu */}
-        <div className="mt-3 pt-3 border-t-2 border-zinc-800 space-y-2">
-          {previousSessionSummary ? (
-            isConfirmCopyPrevious ? (
-              <div className="flex flex-col sm:flex-row items-center justify-center text-center gap-2.5 p-2.5 bg-black border border-red-800 w-full animate-in fade-in duration-150">
-                <span className="text-xs text-zinc-300">
-                  Zastąpić dotychczasowe serie danymi z ostatniego treningu ({previousSessionSummary.date})?
-                </span>
-                <div className="flex items-center gap-2">
+        {/* Pasek akcji: Kopiowanie z poprzedniego treningu - tylko po wybraniu szablonu */}
+        {hasTemplate && (
+          <div className="mt-3 pt-3 border-t-2 border-zinc-800 space-y-2">
+            {previousSessionSummary ? (
+              isConfirmCopyPrevious ? (
+                <div className="flex flex-col sm:flex-row items-center justify-center text-center gap-2.5 p-2.5 bg-black border border-red-800 w-full animate-in fade-in duration-150">
+                  <span className="text-xs text-zinc-300">
+                    Zastąpić dotychczasowe serie danymi z ostatniego treningu ({previousSessionSummary.date})?
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCopyPreviousSession}
+                      className="rounded-none bg-red-700 hover:bg-red-600 px-3 py-1 text-xs font-bold text-white uppercase cursor-pointer"
+                    >
+                      Tak, wczytaj
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsConfirmCopyPrevious(false)}
+                      className="rounded-none bg-black border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 hover:text-white cursor-pointer"
+                    >
+                      Anuluj
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center w-full">
                   <button
                     type="button"
-                    onClick={handleCopyPreviousSession}
-                    className="rounded-none bg-red-700 hover:bg-red-600 px-3 py-1 text-xs font-bold text-white uppercase cursor-pointer"
+                    onClick={() => {
+                      if (dayData?.totalSets && dayData.totalSets > 0) {
+                        setIsConfirmCopyPrevious(true);
+                      } else {
+                        handleCopyPreviousSession();
+                      }
+                    }}
+                    style={{ clipPath: 'polygon(4% 0, 100% 0, 96% 100%, 0 100%)' }}
+                    className="inline-flex items-center justify-center gap-2 rounded-none bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider px-4 py-2 text-xs transition-colors cursor-pointer shadow-none"
+                    title={`Wczytaj ostatni trening z dnia ${previousSessionSummary.date}`}
                   >
-                    Tak, wczytaj
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsConfirmCopyPrevious(false)}
-                    className="rounded-none bg-black border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 hover:text-white cursor-pointer"
-                  >
-                    Anuluj
+                    <RotateCcw className="h-3.5 w-3.5 stroke-[2.3]" />
+                    <span>Skopiuj z poprzedniego razu</span>
+                    <span className="text-[10px] text-red-200 opacity-90 font-normal">
+                      ({previousSessionSummary.date})
+                    </span>
                   </button>
                 </div>
-              </div>
+              )
             ) : (
               <div className="flex items-center justify-center w-full">
                 <button
                   type="button"
                   onClick={() => {
-                    if (dayData?.totalSets && dayData.totalSets > 0) {
-                      setIsConfirmCopyPrevious(true);
-                    } else {
-                      handleCopyPreviousSession();
-                    }
+                    setCopyErrorMsg('Brak poprzednich treningów tego typu w historii.');
+                    setTimeout(() => setCopyErrorMsg(null), 3000);
                   }}
-                  style={{ clipPath: 'polygon(4% 0, 100% 0, 96% 100%, 0 100%)' }}
-                  className="inline-flex items-center justify-center gap-2 rounded-none bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider px-4 py-2 text-xs transition-colors cursor-pointer shadow-none"
-                  title={`Wczytaj ostatni trening z dnia ${previousSessionSummary.date}`}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-none bg-zinc-900 border border-zinc-800 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider text-zinc-500 hover:text-zinc-400 cursor-pointer transition-colors"
+                  title="Brak poprzednich treningów tego typu"
                 >
-                  <RotateCcw className="h-3.5 w-3.5 stroke-[2.3]" />
+                  <RotateCcw className="h-3.5 w-3.5 text-zinc-600" />
                   <span>Skopiuj z poprzedniego razu</span>
-                  <span className="text-[10px] text-red-200 opacity-90 font-normal">
-                    ({previousSessionSummary.date})
-                  </span>
                 </button>
               </div>
-            )
-          ) : (
-            <div className="flex items-center justify-center w-full">
-              <button
-                type="button"
-                onClick={() => {
-                  setCopyErrorMsg('Brak poprzednich treningów tego typu w historii.');
-                  setTimeout(() => setCopyErrorMsg(null), 3000);
-                }}
-                className="inline-flex items-center justify-center gap-1.5 rounded-none bg-zinc-900 border border-zinc-800 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider text-zinc-500 hover:text-zinc-400 cursor-pointer transition-colors"
-                title="Brak poprzednich treningów tego typu"
-              >
-                <RotateCcw className="h-3.5 w-3.5 text-zinc-600" />
-                <span>Skopiuj z poprzedniego razu</span>
-              </button>
-            </div>
-          )}
+            )}
 
-          {copyFeedbackMsg && (
-            <div className="text-xs font-semibold text-emerald-400 pt-1 text-center animate-in fade-in">
-              {copyFeedbackMsg}
-            </div>
-          )}
-          {copyErrorMsg && (
-            <div className="text-xs font-semibold text-amber-400 pt-1 text-center animate-in fade-in">
-              {copyErrorMsg}
-            </div>
-          )}
-        </div>
+            {copyFeedbackMsg && (
+              <div className="text-xs font-semibold text-emerald-400 pt-1 text-center animate-in fade-in">
+                {copyFeedbackMsg}
+              </div>
+            )}
+            {copyErrorMsg && (
+              <div className="text-xs font-semibold text-amber-400 pt-1 text-center animate-in fade-in">
+                {copyErrorMsg}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Jeśli brak przypisanego planu na ten dzień */}
         {!hasExercises && (
@@ -479,7 +484,7 @@ export const ActiveWorkoutView: React.FC = () => {
             onClick={() => setIsAddExtraOpen(true)}
             className="flex w-full items-center justify-center gap-2 rounded-none border-2 border-dashed border-zinc-800 bg-gradient-to-b from-zinc-950 to-black py-3.5 text-xs font-bold uppercase tracking-wider text-zinc-300 hover:border-red-700 hover:text-white transition-colors cursor-pointer"
           >
-            <Plus className="h-4 w-4 text-red-500 stroke-[2.5]" />
+            <span className="text-base font-bold text-red-500 leading-none">+</span>
             <span>Dodaj ćwiczenie poza planem</span>
           </button>
         </div>
