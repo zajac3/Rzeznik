@@ -6,6 +6,7 @@ import {
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Edit2,
   Check,
   X,
@@ -51,6 +52,29 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
   // Editing day name inline
   const [editingDayId, setEditingDayId] = useState<number | null>(null);
   const [editingDayName, setEditingDayName] = useState('');
+
+  // Zwinięte szablony dni treningowych
+  const [collapsedDayIds, setCollapsedDayIds] = useState<Set<number>>(new Set());
+
+  const toggleDayCollapse = (dayId: number) => {
+    setCollapsedDayIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(dayId)) {
+        next.delete(dayId);
+      } else {
+        next.add(dayId);
+      }
+      return next;
+    });
+  };
+
+  const collapseAllDays = () => {
+    setCollapsedDayIds(new Set(daysList.map((d) => d.id!).filter(Boolean)));
+  };
+
+  const expandAllDays = () => {
+    setCollapsedDayIds(new Set());
+  };
 
   // Live queries
   const daysList = useLiveQuery(async () => {
@@ -251,7 +275,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
 
       {/* 2. ZESTAWY TRENINGOWE (LISTA DNI + PRZYCISK DODAJ DZIEŃ) */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between px-1">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-1 gap-2">
           <div>
             <h3 className="text-sm font-bold text-zinc-100 tracking-wider uppercase">
               Harmonogram sesji
@@ -261,15 +285,37 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsCreatingDay(true)}
-            style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
-            className="flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider rounded-none px-4 py-2 text-xs transition-colors shadow-none cursor-pointer"
-          >
-            <Plus className="h-4 w-4 stroke-[2.3]" />
-            <span>Dodaj Dzień</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {daysList.length > 1 && (
+              <div className="flex items-center gap-1.5 mr-1">
+                <button
+                  type="button"
+                  onClick={collapseAllDays}
+                  className="rounded-none border border-zinc-800 bg-black px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-400 hover:text-white hover:border-zinc-700 transition-colors cursor-pointer"
+                  title="Zwiń wszystkie szablony"
+                >
+                  Zwiń wszystkie
+                </button>
+                <button
+                  type="button"
+                  onClick={expandAllDays}
+                  className="rounded-none border border-zinc-800 bg-black px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-400 hover:text-white hover:border-zinc-700 transition-colors cursor-pointer"
+                  title="Rozwiń wszystkie szablony"
+                >
+                  Rozwiń wszystkie
+                </button>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsCreatingDay(true)}
+              style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
+              className="flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider rounded-none px-4 py-2 text-xs transition-colors shadow-none cursor-pointer"
+            >
+              <Plus className="h-4 w-4 stroke-[2.3]" />
+              <span>Dodaj Dzień</span>
+            </button>
+          </div>
         </div>
 
         {/* Formularz tworzenia nowego dnia */}
@@ -340,17 +386,35 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
               .sort((a, b) => a.sort_order - b.sort_order);
 
             const isEditing = editingDayId === day.id;
+            const isExpanded = !collapsedDayIds.has(day.id!);
 
             return (
               <div
                 key={day.id}
-                className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 space-y-3.5 shadow-lg shadow-black/50"
+                className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 shadow-lg shadow-black/50 transition-all"
               >
-                {/* Header dnia */}
-                <div className="flex items-center justify-between pb-3 border-b-2 border-zinc-800">
-                  <div className="flex items-center gap-2 flex-1">
+                {/* Header dnia - klikalny do zwijania / rozwijania */}
+                <div
+                  onClick={() => !isEditing && toggleDayCollapse(day.id!)}
+                  className={`flex items-center justify-between cursor-pointer select-none transition-colors group ${
+                    isExpanded ? 'pb-3 border-b-2 border-zinc-800' : 'pb-0'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                    {/* Ikona zwijania/rozwijania z rotacją */}
+                    <div className="flex items-center justify-center h-7 w-7 rounded-none bg-black border border-zinc-800 text-zinc-400 group-hover:text-white group-hover:border-zinc-700 shrink-0 transition-colors">
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform duration-200 ${
+                          isExpanded ? 'transform rotate-180 text-red-500' : ''
+                        }`}
+                      />
+                    </div>
+
                     {isEditing ? (
-                      <div className="flex items-center gap-1.5 flex-1 max-w-xs">
+                      <div
+                        className="flex items-center gap-1.5 flex-1 max-w-xs"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <input
                           type="text"
                           autoFocus
@@ -367,17 +431,18 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
                         </button>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-sm font-bold text-zinc-100 tracking-wider uppercase">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <h4 className="text-sm font-bold text-zinc-100 tracking-wider uppercase truncate group-hover:text-white">
                           {day.name}
                         </h4>
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setEditingDayId(day.id!);
                             setEditingDayName(day.name);
                           }}
-                          className="text-zinc-400 hover:text-zinc-200 p-1 rounded-none cursor-pointer"
+                          className="text-zinc-500 hover:text-zinc-200 p-1 rounded-none cursor-pointer"
                           title="Zmień nazwę"
                         >
                           <Edit2 className="h-3 w-3" />
@@ -386,9 +451,9 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
                     )}
                   </div>
 
-                  {/* Usuwanie dnia */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-zinc-400 font-bold">
+                  {/* Prawa strona nagłówka */}
+                  <div className="flex items-center gap-2.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <span className="text-[11px] text-zinc-400 font-bold bg-black/60 border border-zinc-800 px-2 py-0.5">
                       {dayExercises.length} ĆW.
                     </span>
                     <button
@@ -398,93 +463,98 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
                         e.stopPropagation();
                         handleDeleteRoutineDay(e, day.id!);
                       }}
-                      className="flex items-center gap-1 rounded-none border border-zinc-800 bg-black px-2 py-1 text-xs text-zinc-400 hover:border-red-900 hover:text-rose-400 transition-colors cursor-pointer"
+                      className="flex items-center gap-1 rounded-none border border-zinc-800 bg-black px-2.5 py-1 text-xs text-zinc-400 hover:border-red-900 hover:text-rose-400 transition-colors cursor-pointer"
                       title="Usuń ten dzień z planu"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
-                      <span className="text-[11px] font-bold uppercase tracking-wider">Usuń</span>
+                      <span className="text-[11px] font-bold uppercase tracking-wider hidden sm:inline">Usuń</span>
                     </button>
                   </div>
                 </div>
 
-                {/* Lista ćwiczeń w zestawie */}
-                {dayExercises.length === 0 ? (
-                  <div className="py-3 text-center rounded-none bg-black border border-zinc-800">
-                    <p className="text-xs text-zinc-400">
-                      Brak ćwiczeń w tym dniu. Dodaj pierwsze ćwiczenie poniżej.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    {dayExercises.map((re, idx) => {
-                      const ex = exerciseMap.get(re.exercise_id);
-                      const CategoryIcon = getCategoryIcon(ex?.muscle_group);
-                      return (
-                        <div
-                          key={re.id}
-                          className="flex items-center justify-between rounded-none bg-black p-3 border border-zinc-800 hover:border-zinc-600 transition-colors"
-                        >
-                          <div className="flex items-center gap-2.5">
-                            <div className="flex h-7 w-7 items-center justify-center rounded-none bg-zinc-950 border border-zinc-800 shrink-0 overflow-hidden">
-                              <CategoryIcon className="w-5 h-5 object-contain opacity-85" />
-                            </div>
-                            <span className="text-xs font-bold text-zinc-500 w-4">
-                              #{idx + 1}
-                            </span>
-                            <div>
-                              <span className="text-xs font-bold text-zinc-100 block uppercase">
-                                {ex?.name ?? 'Ćwiczenie'}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Stepper liczby serii */}
-                          <div className="flex items-center gap-2">
-                            <div className="flex items-center bg-zinc-950 rounded-none px-2 py-0.5 border border-zinc-800">
-                              <button
-                                type="button"
-                                onClick={() => handleAdjustTargetSets(re.id!, re.target_sets, -1)}
-                                className="h-5 w-5 rounded-none text-xs font-bold text-zinc-400 hover:text-white flex items-center justify-center cursor-pointer"
-                              >
-                                -
-                              </button>
-                              <span className="px-2 text-xs font-bold text-zinc-200">
-                                {re.target_sets} {re.target_sets === 1 ? 'seria' : 'serie'}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleAdjustTargetSets(re.id!, re.target_sets, 1)}
-                                className="h-5 w-5 rounded-none text-xs font-bold text-zinc-400 hover:text-white flex items-center justify-center cursor-pointer"
-                              >
-                                +
-                              </button>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => removeExerciseFromRoutineDay(re.id!)}
-                              className="text-zinc-500 hover:text-rose-400 transition-colors p-1 cursor-pointer rounded-none"
-                              title="Usuń ćwiczenie"
+                {/* Rozwijana zawartość szablonu */}
+                {isExpanded && (
+                  <div className="pt-3.5 space-y-3.5 animate-in fade-in duration-150">
+                    {/* Lista ćwiczeń w zestawie */}
+                    {dayExercises.length === 0 ? (
+                      <div className="py-3 text-center rounded-none bg-black border border-zinc-800">
+                        <p className="text-xs text-zinc-400">
+                          Brak ćwiczeń w tym dniu. Dodaj pierwsze ćwiczenie poniżej.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {dayExercises.map((re, idx) => {
+                          const ex = exerciseMap.get(re.exercise_id);
+                          const CategoryIcon = getCategoryIcon(ex?.muscle_group);
+                          return (
+                            <div
+                              key={re.id}
+                              className="flex items-center justify-between rounded-none bg-black p-3 border border-zinc-800 hover:border-zinc-600 transition-colors"
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                              <div className="flex items-center gap-2.5">
+                                <div className="flex h-7 w-7 items-center justify-center rounded-none bg-zinc-950 border border-zinc-800 shrink-0 overflow-hidden">
+                                  <CategoryIcon className="w-5 h-5 object-contain opacity-85" />
+                                </div>
+                                <span className="text-xs font-bold text-zinc-500 w-4">
+                                  #{idx + 1}
+                                </span>
+                                <div>
+                                  <span className="text-xs font-bold text-zinc-100 block uppercase">
+                                    {ex?.name ?? 'Ćwiczenie'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Stepper liczby serii */}
+                              <div className="flex items-center gap-2">
+                                <div className="flex items-center bg-zinc-950 rounded-none px-2 py-0.5 border border-zinc-800">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAdjustTargetSets(re.id!, re.target_sets, -1)}
+                                    className="h-5 w-5 rounded-none text-xs font-bold text-zinc-400 hover:text-white flex items-center justify-center cursor-pointer"
+                                  >
+                                    -
+                                  </button>
+                                  <span className="px-2 text-xs font-bold text-zinc-200">
+                                    {re.target_sets} {re.target_sets === 1 ? 'seria' : 'serie'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAdjustTargetSets(re.id!, re.target_sets, 1)}
+                                    className="h-5 w-5 rounded-none text-xs font-bold text-zinc-400 hover:text-white flex items-center justify-center cursor-pointer"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => removeExerciseFromRoutineDay(re.id!)}
+                                  className="text-zinc-500 hover:text-rose-400 transition-colors p-1 cursor-pointer rounded-none"
+                                  title="Usuń ćwiczenie"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Przycisk dodaj ćwiczenie */}
+                    <button
+                      type="button"
+                      onClick={() => setActiveRoutineDayForExercise(day.id!)}
+                      style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
+                      className="flex w-full items-center justify-center gap-1.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider rounded-none py-2 text-xs transition-colors cursor-pointer"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>Dodaj ćwiczenie do {day.name}</span>
+                    </button>
                   </div>
                 )}
-
-                {/* Przycisk dodaj ćwiczenie */}
-                <button
-                  type="button"
-                  onClick={() => setActiveRoutineDayForExercise(day.id!)}
-                  style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
-                  className="flex w-full items-center justify-center gap-1.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider rounded-none py-2 text-xs transition-colors cursor-pointer"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  <span>Dodaj ćwiczenie do {day.name}</span>
-                </button>
               </div>
             );
           })
