@@ -12,7 +12,7 @@ export const Header: React.FC = () => {
         src="./logo.png" 
         onError={(e) => { e.currentTarget.src = './logo.jpg'; }}
         alt="Rzeźnik" 
-        className="w-full max-w-[180px] h-auto object-contain select-none drop-shadow-2xl"
+        className="w-full max-w-[138px] h-auto object-contain select-none drop-shadow-2xl"
       />
     </header>
   );
