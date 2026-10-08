@@ -5,10 +5,12 @@ import { PlanView } from './components/PlanView';
 import { ActiveWorkoutView } from './components/ActiveWorkoutView';
 import { StatsView } from './components/StatsView';
 import { ExportView } from './components/ExportView';
+import { SplashScreen } from './components/SplashScreen';
 import { ensureDefaultExercisesSeeded } from './db/db';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('workout');
+  const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
     ensureDefaultExercisesSeeded().catch((err) => {
@@ -76,6 +78,9 @@ export default function App() {
 
         {/* iOS Bottom Navigation Bar */}
         <BottomNavBar activeTab={activeTab} onSelectTab={setActiveTab} />
+
+        {/* Ekran startowy z animacją logo */}
+        {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
       </div>
     </div>
   );
