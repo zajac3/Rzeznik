@@ -8,7 +8,7 @@ import { ExportView } from './components/ExportView';
 import { ensureDefaultExercisesSeeded } from './db/db';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<TabKey>('plan');
+  const [activeTab, setActiveTab] = useState<TabKey>('workout');
 
   useEffect(() => {
     ensureDefaultExercisesSeeded().catch((err) => {
