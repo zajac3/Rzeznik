@@ -641,6 +641,10 @@ export async function findLastWorkoutSessionOfType(
   routineDayId?: number,
   routineDayName?: string
 ): Promise<PreviousWorkoutSummary | null> {
+  if (!routineDayId && (!routineDayName || routineDayName.trim() === '')) {
+    return null;
+  }
+
   const allDays = await db.workoutDays.where('date').below(currentDate).reverse().sortBy('date');
 
   for (const day of allDays) {
