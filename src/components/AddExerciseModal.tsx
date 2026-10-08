@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { X, Search, Plus, Check } from 'lucide-react';
+import { X, Search, Check } from 'lucide-react';
 import { db, type Exercise, type MuscleGroup } from '../db/db';
 import { getCategoryIcon } from '../utils/categoryIcons';
 
@@ -220,7 +220,7 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
                 style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
                 className="mt-2 inline-flex items-center gap-1.5 rounded-none bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider px-4 py-2 text-xs transition-colors cursor-pointer"
               >
-                <Plus className="h-3.5 w-3.5" /> Utwórz ćwiczenie „{search}”
+                <span className="text-sm font-bold leading-none">+</span> Utwórz ćwiczenie „{search}”
               </button>
             </div>
           ) : (
@@ -261,9 +261,9 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
 
                   <button
                     type="button"
-                    className="flex h-7 w-7 items-center justify-center rounded-none border border-zinc-800 bg-zinc-950 text-zinc-300 hover:bg-red-700 hover:text-white transition-colors cursor-pointer"
+                    className="flex h-7 w-7 items-center justify-center rounded-none border border-zinc-800 bg-zinc-950 text-zinc-300 hover:bg-red-700 hover:text-white transition-colors cursor-pointer text-sm font-bold"
                   >
-                    <Plus className="h-3.5 w-3.5" />
+                    +
                   </button>
                 </div>
               );
