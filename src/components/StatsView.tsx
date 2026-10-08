@@ -15,7 +15,6 @@ import {
   CheckCircle2,
   Flame,
 } from 'lucide-react';
-import confetti from 'canvas-confetti';
 import {
   db,
   addOrUpdateBodyWeight,
@@ -301,15 +300,7 @@ export const StatsView: React.FC = () => {
     const isNewPR = val > existingBest;
 
     if (isNewPR) {
-      try {
-        confetti({
-          particleCount: 50,
-          spread: 65,
-          origin: { y: 0.7 },
-          colors: ['#dc2626', '#ef4444', '#f87171', '#ffffff', '#f59e0b'],
-        });
-      } catch {}
-      setManualSuccessMsg(`Nowy rekord (PR)! Zapisano 1RM ${val} kg dla "${exName}"!`);
+      setManualSuccessMsg(`Nowy PR! Zapisano 1RM ${val} kg dla "${exName}"!`);
     } else {
       setManualSuccessMsg(`Zapisano 1RM ${val} kg dla "${exName}".`);
     }
@@ -813,7 +804,7 @@ export const StatsView: React.FC = () => {
                 <div className="sm:col-span-4 flex items-center gap-2 p-2.5 bg-red-950/60 border border-red-700/80 animate-in fade-in duration-150">
                   <Flame className="h-4 w-4 fill-red-600 text-red-600 shrink-0 animate-pulse" />
                   <span className="text-xs font-bold text-red-400 font-sans tracking-wide">
-                    Nowy rekord (PR)!
+                    Nowy PR!
                     {currentSelectedManualMaxItem?.best1RM ? (
                       <span className="text-zinc-300 ml-1.5 font-normal">
                         Dotychczasowy rekord dla tego boju: {currentSelectedManualMaxItem.best1RM} kg
