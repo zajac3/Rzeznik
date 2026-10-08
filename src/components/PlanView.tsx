@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  Plus,
   Trash2,
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -66,14 +65,6 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
       }
       return next;
     });
-  };
-
-  const collapseAllDays = () => {
-    setCollapsedDayIds(new Set(daysList.map((d) => d.id!).filter(Boolean)));
-  };
-
-  const expandAllDays = () => {
-    setCollapsedDayIds(new Set());
   };
 
   // Live queries
@@ -275,7 +266,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
 
       {/* 2. ZESTAWY TRENINGOWE (LISTA DNI + PRZYCISK DODAJ DZIEŃ) */}
       <div className="space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-1 gap-2">
+        <div className="flex items-center justify-between px-1">
           <div>
             <h3 className="text-sm font-bold text-zinc-100 tracking-wider uppercase">
               Harmonogram sesji
@@ -285,37 +276,15 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            {daysList.length > 1 && (
-              <div className="flex items-center gap-1.5 mr-1">
-                <button
-                  type="button"
-                  onClick={collapseAllDays}
-                  className="rounded-none border border-zinc-800 bg-black px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-400 hover:text-white hover:border-zinc-700 transition-colors cursor-pointer"
-                  title="Zwiń wszystkie szablony"
-                >
-                  Zwiń wszystkie
-                </button>
-                <button
-                  type="button"
-                  onClick={expandAllDays}
-                  className="rounded-none border border-zinc-800 bg-black px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-400 hover:text-white hover:border-zinc-700 transition-colors cursor-pointer"
-                  title="Rozwiń wszystkie szablony"
-                >
-                  Rozwiń wszystkie
-                </button>
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => setIsCreatingDay(true)}
-              style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
-              className="flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider rounded-none px-4 py-2 text-xs transition-colors shadow-none cursor-pointer"
-            >
-              <Plus className="h-4 w-4 stroke-[2.3]" />
-              <span>Dodaj Dzień</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setIsCreatingDay(true)}
+            style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
+            className="flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider rounded-none px-3.5 sm:px-4 py-2 text-xs transition-colors shadow-none cursor-pointer shrink-0 ml-2"
+          >
+            <span className="text-base font-bold leading-none">+</span>
+            <span>Dodaj Dzień</span>
+          </button>
         </div>
 
         {/* Formularz tworzenia nowego dnia */}
@@ -550,7 +519,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
                       style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
                       className="flex w-full items-center justify-center gap-1.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider rounded-none py-2 text-xs transition-colors cursor-pointer"
                     >
-                      <Plus className="h-3.5 w-3.5" />
+                      <span className="text-sm font-bold leading-none">+</span>
                       <span>Dodaj ćwiczenie do {day.name}</span>
                     </button>
                   </div>
