@@ -9,8 +9,9 @@ import {
   Pencil,
   X,
   Flame,
+  Droplet,
+  ChevronDown,
 } from 'lucide-react';
-import confetti from 'canvas-confetti';
 import {
   db,
   getOrCreateWorkoutDay,
@@ -43,6 +44,16 @@ import {
 } from '../utils/dateUtils';
 import { AddExerciseModal } from './AddExerciseModal';
 import { getCategoryIcon } from '../utils/categoryIcons';
+
+const getSetsWord = (count: number) => {
+  if (count === 1) return 'seria';
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) {
+    return 'serie';
+  }
+  return 'serii';
+};
 
 export const ActiveWorkoutView: React.FC = () => {
   const todayISO = getTodayISO();
@@ -253,6 +264,17 @@ export const ActiveWorkoutView: React.FC = () => {
   const hasExercises = Boolean(dayData?.tasks && dayData.tasks.length > 0);
   const hasTemplate = Boolean(dayData?.routine_day_id || (dayData?.routine_day_name && dayData.routine_day_name.trim() !== ''));
 
+  // Obliczenie postępu treningu (napełnianie zbiornika krwią w miarę kolejnych serii)
+  const totalCompletedSets = dayData?.tasks?.reduce((acc, t) => acc + (t.sets?.length || 0), 0) ?? 0;
+  const totalTargetSets = dayData?.tasks?.reduce((acc, t) => {
+    const planned = t.target_sets && t.target_sets > 0 ? t.target_sets : 3;
+    return acc + Math.max(planned, t.sets?.length || 0);
+  }, 0) ?? 0;
+
+  const progressPercent = totalTargetSets > 0
+    ? Math.min(100, Math.round((totalCompletedSets / totalTargetSets) * 100))
+    : 0;
+
   return (
     <div className="space-y-4 max-w-xl mx-auto text-zinc-100 font-sans">
       {/* Toast powiadomienia o nowym rekordzie (PR) */}
@@ -265,7 +287,7 @@ export const ActiveWorkoutView: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-red-400 font-sans">
-                  Nowy rekord życiowy (PR)
+                  Nowy PR!
                 </span>
               </div>
               <p className="text-xs font-bold text-white uppercase font-sans">
@@ -350,6 +372,63 @@ export const ActiveWorkoutView: React.FC = () => {
               </button>
             );
           })}
+        </div>
+      </div>
+
+      {/* 1.5. ZBIORNIK KRWI - POSTĘP SESJI TRENINGOWEJ */}
+      <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-3 sm:p-3.5 border-2 border-zinc-700/80 shadow-lg shadow-black/50">
+        <div className="flex items-center justify-between pb-2 mb-2 border-b border-zinc-800/80">
+          <div className="flex items-center gap-2">
+            <Droplet
+              className={`h-3.5 w-3.5 transition-colors ${
+                progressPercent > 0
+                  ? 'text-red-500 fill-red-600 animate-pulse'
+                  : 'text-zinc-500 fill-zinc-700'
+              }`}
+            />
+            <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
+              Postęp treningu
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs">
+            {totalTargetSets > 0 ? (
+              <>
+                <span className="text-zinc-400 font-mono text-[11px]">
+                  {totalCompletedSets}/{totalTargetSets} {getSetsWord(totalTargetSets)}
+                </span>
+                <span
+                  className={`font-bold font-mono tracking-wide ${
+                    progressPercent === 100
+                      ? 'text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.7)]'
+                      : 'text-red-500'
+                  }`}
+                >
+                  {progressPercent}%
+                </span>
+              </>
+            ) : (
+              <span className="text-zinc-500 text-[11px]">
+                Brak zaplanowanych serii
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Szklany zbiornik / fiolka napełniająca się krwią */}
+        <div className="relative w-full h-3.5 bg-black/90 border border-zinc-700/90 overflow-hidden shadow-[inset_0_2px_5px_rgba(0,0,0,0.95)]">
+          {/* Krew napełniająca zbiornik */}
+          <div
+            className="h-full bg-gradient-to-r from-red-950 via-red-700 to-red-600 transition-all duration-700 ease-out relative shadow-[0_0_12px_rgba(220,38,38,0.6)]"
+            style={{ width: `${progressPercent}%` }}
+          >
+            {/* Lśniący brzeg płynu (menisk krwi) */}
+            {progressPercent > 0 && (
+              <div className="absolute right-0 top-0 bottom-0 w-2 bg-gradient-to-r from-transparent to-red-300 opacity-90 shadow-[0_0_10px_rgba(254,202,202,0.9)]" />
+            )}
+            {/* Połysk światła na szklanej powierzchni cieczy */}
+            <div className="absolute inset-x-0 top-0 h-[1.5px] bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+          </div>
         </div>
       </div>
 
@@ -550,7 +629,7 @@ export const ActiveWorkoutView: React.FC = () => {
                 <span className="text-base font-bold text-white font-sans">{dayData.totalSets}</span>
               </div>
               <div className="bg-black/60 border border-zinc-800 p-2.5 col-span-2 sm:col-span-1">
-                <span className="block text-[10px] text-zinc-400 uppercase font-bold">Nowe rekordy</span>
+                <span className="block text-[10px] text-zinc-400 uppercase font-bold">Nowe PR</span>
                 <span className="text-base font-bold text-red-500 font-sans flex items-center justify-center gap-1">
                   <Flame className="h-4 w-4 fill-red-600 text-red-600 inline" />
                   {sessionPRs.length}
@@ -561,7 +640,7 @@ export const ActiveWorkoutView: React.FC = () => {
             {sessionPRs.length > 0 && (
               <div className="mt-3 pt-3 border-t-2 border-zinc-800 space-y-2">
                 <span className="text-xs font-bold text-red-400 uppercase tracking-wider block font-sans">
-                  Ustanowione rekordy (PR) w tej sesji:
+                  Ustanowione PR w tej sesji:
                 </span>
                 <div className="space-y-1.5">
                   {sessionPRs.map((sr) => (
@@ -585,7 +664,7 @@ export const ActiveWorkoutView: React.FC = () => {
                           </span>
                         )}
                         <span className="rounded-none bg-red-950 border border-red-700 px-1.5 py-0.5 text-[9px] font-bold text-red-400 font-sans">
-                          Nowy rekord
+                          Nowy PR!
                         </span>
                       </div>
                     </div>
@@ -681,6 +760,7 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
   onRecordBroken,
   onDeleteExercise,
 }) => {
+  const [isExpanded, setIsExpanded] = useState<boolean>(true);
   const [weightInput, setWeightInput] = useState<string>('60');
   const [repsInput, setRepsInput] = useState<string>('8');
   const [rirInput, setRirInput] = useState<number>(2);
@@ -753,14 +833,6 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
     await addLoggedSet(task.id, parsedWeight, parsedReps, rirInput);
 
     if (willBePR) {
-      try {
-        confetti({
-          particleCount: 50,
-          spread: 65,
-          origin: { y: 0.7 },
-          colors: ['#dc2626', '#ef4444', '#f87171', '#ffffff', '#f59e0b'],
-        });
-      } catch {}
       const est1RM = calculateEpley1RM(parsedWeight, parsedReps);
       onRecordBroken?.(task.exercise?.name ?? 'Ćwiczenie', parsedWeight, parsedReps, est1RM);
     }
@@ -773,6 +845,7 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
     setRepsInput(String(last.reps));
     setRirInput(last.rir);
     await addLoggedSet(task.id, last.weight, last.reps, last.rir);
+    setIsExpanded(true);
   };
 
   const handleDeleteSet = async (setId?: number) => {
@@ -783,9 +856,14 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
   const CategoryIcon = getCategoryIcon(task.exercise?.muscle_group);
 
   return (
-    <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 shadow-lg shadow-black/50 space-y-3">
-      {/* Nagłówek ćwiczenia z licznikiem serii */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 border-b-2 border-zinc-800 gap-2">
+    <div className={`rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 shadow-lg shadow-black/50 ${isExpanded ? 'space-y-3' : ''}`}>
+      {/* Nagłówek ćwiczenia z licznikiem serii - klikalny do zwijania / rozwijania */}
+      <div
+        onClick={() => setIsExpanded(!isExpanded)}
+        className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 cursor-pointer select-none transition-colors group ${
+          isExpanded ? 'pb-3 border-b-2 border-zinc-800' : 'pb-0'
+        }`}
+      >
         <div className="flex items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-none bg-black border border-zinc-800 shrink-0 overflow-hidden">
             <CategoryIcon className="w-6 h-6 object-contain opacity-85" />
@@ -795,7 +873,7 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
               <span className="text-[11px] font-bold text-zinc-500">
                 #{index + 1}
               </span>
-              <h4 className="text-sm font-bold text-white tracking-wide uppercase">
+              <h4 className="text-sm font-bold text-white tracking-wide uppercase group-hover:text-red-400 transition-colors">
                 {task.exercise?.name ?? 'Ćwiczenie'}
               </h4>
               {task.is_extra && (
@@ -809,7 +887,7 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
             {todayTopPRSet ? (
               <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-red-500 font-sans">
                 <Flame className="h-3.5 w-3.5 fill-red-600 text-red-600 shrink-0 animate-pulse" />
-                <span>Nowy rekord w tej sesji: {todayTopPRSet.weight} kg × {todayTopPRSet.reps}</span>
+                <span>Nowy PR w tej sesji: {todayTopPRSet.weight} kg × {todayTopPRSet.reps}</span>
               </div>
             ) : priorPR && priorPR.maxWeight > 0 ? (
               <div className="mt-1 flex items-center gap-1 text-[10px] text-zinc-400 font-sans">
@@ -833,12 +911,17 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
                   Ukończono ({targetSets}/{targetSets} serii)
                 </span>
               )}
+              {task.sets.length > 0 && (
+                <span className="inline-flex items-center rounded-none bg-black border border-zinc-800 px-2 py-0.5 text-[11px] font-mono text-zinc-400">
+                  {task.sets.length} {getSetsWord(task.sets.length)}
+                </span>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Akcje ćwiczenia: Kopiuj serię / Usuń ćwiczenie */}
-        <div className="flex items-center gap-2 self-end sm:self-auto">
+        {/* Akcje ćwiczenia: Kopiuj serię / Usuń ćwiczenie / Zwiń-Rozwiń */}
+        <div className="flex items-center gap-2 self-end sm:self-auto" onClick={(e) => e.stopPropagation()}>
           {task.sets.length > 0 && (
             <button
               type="button"
@@ -859,12 +942,30 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
             <Trash2 className="h-3.5 w-3.5" />
             <span>Usuń</span>
           </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsExpanded(!isExpanded);
+            }}
+            className="flex items-center justify-center h-7 w-7 rounded-none border border-zinc-800 bg-black text-zinc-400 hover:text-white hover:border-zinc-700 transition-colors cursor-pointer"
+            title={isExpanded ? 'Zwiń ćwiczenie' : 'Rozwiń ćwiczenie'}
+          >
+            <ChevronDown
+              className={`h-4 w-4 transition-transform duration-200 ${
+                isExpanded ? 'transform rotate-180 text-red-500' : ''
+              }`}
+            />
+          </button>
         </div>
       </div>
 
-      {/* Tabela zarejestrowanych serii (CZYSTY INTERFEJS: TYLKO WAGA, POWTÓRZENIA, RIR I CHECKBOX) */}
-      {task.sets.length > 0 && (
-        <div className="mt-3 divide-y-2 divide-zinc-900 text-xs">
+      {/* Rozwijana zawartość ćwiczenia: lista serii oraz formularz nowej serii */}
+      {isExpanded && (
+        <div className="space-y-3 animate-in fade-in duration-150">
+          {/* Tabela zarejestrowanych serii (CZYSTY INTERFEJS: TYLKO WAGA, POWTÓRZENIA, RIR I CHECKBOX) */}
+          {task.sets.length > 0 && (
+            <div className="mt-3 divide-y-2 divide-zinc-900 text-xs">
           {task.sets.map((set, setIdx) => {
             const isSetPR = isSetNewPR(set.weight, set.reps, priorPR);
 
@@ -1048,7 +1149,7 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
           <div className="flex items-center gap-2 p-2 bg-red-950/60 border border-red-700/80 animate-in fade-in duration-150">
             <Flame className="h-4 w-4 fill-red-600 text-red-600 shrink-0 animate-pulse" />
             <div className="text-xs font-bold text-red-400 font-sans tracking-wide">
-              <span>Nowy rekord (PR)! {parsedWeight} kg × {parsedReps} powt.</span>
+              <span>Nowy PR! {parsedWeight} kg × {parsedReps} powt.</span>
               {typingEst1RM > 0 && (
                 <span className="text-zinc-300 font-normal ml-1">
                   (szac. 1RM: {typingEst1RM} kg)
@@ -1074,6 +1175,8 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
           </button>
         </div>
       </form>
+        </div>
+      )}
     </div>
   );
 };
