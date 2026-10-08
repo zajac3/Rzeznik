@@ -12,7 +12,6 @@ import {
 import {
   ChevronDown,
   Trash2,
-  Plus,
   CheckCircle2,
   Flame,
 } from 'lucide-react';
@@ -833,7 +832,7 @@ export const StatsView: React.FC = () => {
                   style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
                   className="inline-flex items-center gap-1.5 rounded-none bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider px-4 py-2 text-xs transition-colors cursor-pointer"
                 >
-                  <Plus className="h-3.5 w-3.5" />
+                  <span className="text-sm font-bold leading-none">+</span>
                   <span>Zapisz rekord 1RM</span>
                 </button>
               </div>
