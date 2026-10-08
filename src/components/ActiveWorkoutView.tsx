@@ -63,13 +63,13 @@ export const ActiveWorkoutView: React.FC = () => {
     setCopyErrorMsg(null);
   }, [selectedDate]);
 
-  // BLOKADA PRZYSZŁOŚCI: Daty wyłącznie z przeszłości i dziś (dziś jest maksymalną wartością po prawej)
+  // Dni treningowe: 30 dni w przeszłość, dzień dzisiejszy w centrum i 30 dni w przyszłość
   const dateRange = React.useMemo(() => {
     const list: { dateISO: string; dayNumber: number; dayShort: string; isToday: boolean }[] = [];
     const base = new Date();
     base.setHours(12, 0, 0, 0);
-    // 30 dni w tył do dziś (offset 0)
-    for (let offset = -29; offset <= 0; offset++) {
+    // Zakres 30 dni wstecz i 30 dni naprzód (łącznie 61 dni, dzień dzisiejszy dokładnie w centrum)
+    for (let offset = -30; offset <= 30; offset++) {
       const d = new Date(base);
       d.setDate(base.getDate() + offset);
       const iso = formatDateToISO(d);
@@ -86,12 +86,32 @@ export const ActiveWorkoutView: React.FC = () => {
     return list;
   }, [todayISO]);
 
-  // Przewiń na start do prawej strony (do dzisiejszej daty)
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+  // Funkcja wyśrodkowująca dzień dzisiejszy w poziomym pasku
+  const centerOnToday = React.useCallback((smooth = false) => {
+    if (!scrollRef.current) return;
+    const container = scrollRef.current;
+    const todayEl = container.querySelector<HTMLElement>('[data-today="true"]');
+    if (todayEl) {
+      const containerWidth = container.clientWidth;
+      const target = todayEl.offsetLeft - (containerWidth / 2) + (todayEl.offsetWidth / 2);
+      if (smooth) {
+        container.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
+      } else {
+        container.scrollLeft = Math.max(0, target);
+      }
+    } else {
+      container.scrollLeft = (container.scrollWidth - container.clientWidth) / 2;
     }
   }, []);
+
+  // Przewiń na start tak, aby dzień dzisiejszy był dokładnie po środku
+  useEffect(() => {
+    centerOnToday(false);
+    const timer = setTimeout(() => {
+      centerOnToday(false);
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [centerOnToday]);
 
   // Pobierz szablony dni z planu
   const routineDays: RoutineDay[] = useLiveQuery(async () => {
@@ -263,19 +283,34 @@ export const ActiveWorkoutView: React.FC = () => {
           </button>
         </div>
       )}
-      {/* 1. HORYZONTALNIE PRZEWIJANY PASEK DAT (BLOKADA PRZYSZŁOŚCI: DZIŚ TO MAKSYMALNA WARTOŚĆ PO PRAWEJ) */}
+      {/* 1. HORYZONTALNIE PRZEWIJANY PASEK DAT (PRZESZŁOŚĆ, DZIŚ W CENTRUM, PRZYSZŁOŚĆ) */}
       <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-3.5 border-2 border-zinc-700/80 shadow-lg shadow-black/50">
         <div className="flex items-center justify-between pb-2 mb-2 border-b border-zinc-800/80">
-          <span className="text-xs font-semibold text-zinc-400">
-            Dni treningowe
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-zinc-400">
+              Dni treningowe
+            </span>
+            {selectedDate !== todayISO && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedDate(todayISO);
+                  centerOnToday(true);
+                }}
+                className="text-[10px] font-bold uppercase tracking-wider text-red-500 hover:text-red-400 bg-red-950/40 border border-red-900/60 px-2 py-0.5 cursor-pointer transition-colors"
+                title="Wróć do dzisiejszego dnia"
+              >
+                Dziś
+              </button>
+            )}
+          </div>
           <span className="text-xs font-bold text-red-500 tracking-wide">
             {formatPolishFriendlyDate(selectedDate)}
           </span>
         </div>
         <div
           ref={scrollRef}
-          className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1 px-0.5"
+          className="relative flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1 px-0.5"
         >
           {dateRange.map((item) => {
             const isSelected = selectedDate === item.dateISO;
@@ -284,6 +319,7 @@ export const ActiveWorkoutView: React.FC = () => {
             return (
               <button
                 key={item.dateISO}
+                data-today={item.isToday ? 'true' : undefined}
                 type="button"
                 onClick={() => setSelectedDate(item.dateISO)}
                 className={`relative flex flex-col items-center justify-center min-w-[52px] h-[66px] rounded-none transition-all shrink-0 cursor-pointer ${
