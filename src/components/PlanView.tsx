@@ -114,7 +114,10 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
     setIsCreatingDay(false);
 
     try {
-      await createRoutineDay(name);
+      const newId = await createRoutineDay(name);
+      if (newId) {
+        setExpandedDayIds((prev) => new Set(prev).add(newId));
+      }
     } catch (err) {
       console.error('Błąd tworzenia dnia:', err);
     }
@@ -655,6 +658,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
         onSelectExercise={async (exerciseId) => {
           if (activeRoutineDayForExercise) {
             await addExerciseToRoutineDay(activeRoutineDayForExercise, exerciseId, 4);
+            setExpandedDayIds((prev) => new Set(prev).add(activeRoutineDayForExercise));
             setActiveRoutineDayForExercise(null);
           }
         }}
