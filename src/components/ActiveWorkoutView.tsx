@@ -78,6 +78,7 @@ export const ActiveWorkoutView: React.FC = () => {
     setIsConfirmDeleteSession(false);
     setIsConfirmCopyPrevious(false);
     setIsConfirmDeleteNote(false);
+    setIsNotesExpanded(false);
     setCopyFeedbackMsg(null);
     setCopyErrorMsg(null);
     setDeleteNotesFeedbackMsg(null);
@@ -153,14 +154,11 @@ export const ActiveWorkoutView: React.FC = () => {
     [selectedDate]
   );
 
-  // Synchronizacja pola notatki z bazą danych
+  // Synchronizacja pola notatki z bazą danych (pozostaje domyślnie zwinięta)
   useEffect(() => {
     const existingNotes = dayData?.notes || '';
     setNotesInput(existingNotes);
     setIsNotesSaved(false);
-    if (existingNotes.trim().length > 0) {
-      setIsNotesExpanded(true);
-    }
   }, [dayData?.notes, selectedDate]);
 
   const handleSaveNotes = async () => {
@@ -934,7 +932,7 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
   priorPR,
   onDeleteExercise,
 }) => {
-  const [isExpanded, setIsExpanded] = useState<boolean>(true);
+  const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [weightInput, setWeightInput] = useState<string>('60');
   const [repsInput, setRepsInput] = useState<string>('8');
   const [rirInput, setRirInput] = useState<number>(2);
