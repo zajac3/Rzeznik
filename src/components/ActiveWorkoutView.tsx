@@ -1,1058 +1,1261 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts';
-import {
-  ChevronDown,
   Trash2,
-  CheckCircle2,
+  Copy,
+  Check,
+  Dumbbell,
+  RotateCcw,
+  Pencil,
+  X,
   Flame,
+  Droplet,
+  ChevronDown,
 } from 'lucide-react';
 import {
   db,
-  addOrUpdateBodyWeight,
-  deleteBodyWeight,
+  getOrCreateWorkoutDay,
+  addExtraExerciseToWorkoutDay,
+  addLoggedSet,
+  updateLoggedSet,
+  deleteLoggedSet,
+  removeTaskFromDay,
+  getFullDayDetails,
+  assignRoutineDayToDate,
+  unassignRoutineDayFromDate,
+  deleteWorkoutSessionByDate,
+  findLastWorkoutSessionOfType,
+  copyPreviousWorkoutSession,
+  getHistoricalPRs,
+  isSetNewPR,
   calculateEpley1RM,
-  addManual1RM,
-  deleteManual1RM,
-  delete1RMRecord,
-  deleteExercise1RMRecords,
-  type BodyWeightEntry,
-  type Manual1RMEntry,
-  type Exercise,
+  type FullDayDetails,
+  type FullTaskDetails,
+  type RoutineDay,
+  type PreviousWorkoutSummary,
+  type LoggedSet,
+  type ExerciseHistoricalPR,
 } from '../db/db';
-import { getTodayISO } from '../utils/dateUtils';
-import { WorkoutHistoryView } from './WorkoutHistoryView';
+import {
+  getTodayISO,
+  formatPolishFriendlyDate,
+  POLISH_DAYS_SHORT,
+  formatDateToISO,
+} from '../utils/dateUtils';
+import { AddExerciseModal } from './AddExerciseModal';
+import { getCategoryIcon } from '../utils/categoryIcons';
 
-export const StatsView: React.FC = () => {
-  // Trzy subzakładki: [Wykresy], [Maksy] oraz [Historia treningów] (Segmented Control)
-  const [subTab, setSubTab] = useState<'charts' | 'maxes' | 'history'>('charts');
+const getSetsWord = (count: number) => {
+  if (count === 1) return 'seria';
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) {
+    return 'serie';
+  }
+  return 'serii';
+};
 
-  // Wewnątrz Wykresów: przełącznik wykresu ćwiczeń / masy ciała
-  const [chartType, setChartType] = useState<'exercise' | 'weight'>('exercise');
-  const [selectedExerciseId, setSelectedExerciseId] = useState<number | null>(null);
+export const ActiveWorkoutView: React.FC = () => {
+  const todayISO = getTodayISO();
+  const [selectedDate, setSelectedDate] = useState<string>(todayISO);
+  const [isAddExtraOpen, setIsAddExtraOpen] = useState(false);
+  const [isSelectPlanModalOpen, setIsSelectPlanModalOpen] = useState(false);
+  const [isConfirmDeleteSession, setIsConfirmDeleteSession] = useState(false);
+  const [isConfirmCopyPrevious, setIsConfirmCopyPrevious] = useState(false);
+  const [copyFeedbackMsg, setCopyFeedbackMsg] = useState<string | null>(null);
+  const [copyErrorMsg, setCopyErrorMsg] = useState<string | null>(null);
 
-  // Formularz wagi ciała
-  const [newWeight, setNewWeight] = useState<string>('80.0');
-  const [weightDate, setWeightDate] = useState<string>(() => getTodayISO());
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Formularz ręcznego wpisu 1RM
-  const [selectedMaxExerciseId, setSelectedMaxExerciseId] = useState<number | null>(null);
-  const [manualExerciseId, setManualExerciseId] = useState<number | null>(null);
-  const [manualWeight, setManualWeight] = useState<string>('100.0');
-  const [manualDate, setManualDate] = useState<string>(() => getTodayISO());
-  const [manualSuccessMsg, setManualSuccessMsg] = useState<string | null>(null);
+  useEffect(() => {
+    setIsConfirmDeleteSession(false);
+    setIsConfirmCopyPrevious(false);
+    setCopyFeedbackMsg(null);
+    setCopyErrorMsg(null);
+  }, [selectedDate]);
 
-  // Potwierdzenie usuwania rekordów w zakładce Maksy
-  const [confirmDeleteExerciseId, setConfirmDeleteExerciseId] = useState<number | null>(null);
-  const [confirmDeleteManualId, setConfirmDeleteManualId] = useState<number | null>(null);
+  // Dni treningowe: 30 dni w przeszłość, dzień dzisiejszy w centrum i 30 dni w przyszłość
+  const dateRange = React.useMemo(() => {
+    const list: { dateISO: string; dayNumber: number; dayShort: string; isToday: boolean }[] = [];
+    const base = new Date();
+    base.setHours(12, 0, 0, 0);
+    // Zakres 30 dni wstecz i 30 dni naprzód (łącznie 61 dni, dzień dzisiejszy dokładnie w centrum)
+    for (let offset = -30; offset <= 30; offset++) {
+      const d = new Date(base);
+      d.setDate(base.getDate() + offset);
+      const iso = formatDateToISO(d);
+      let dayIndex = d.getDay() - 1;
+      if (dayIndex === -1) dayIndex = 6;
 
-  // Live queries
-  const exercises = useLiveQuery(async () => {
-    return await db.exercises.toArray();
-  }, []) ?? [];
+      list.push({
+        dateISO: iso,
+        dayNumber: d.getDate(),
+        dayShort: POLISH_DAYS_SHORT[dayIndex],
+        isToday: iso === todayISO,
+      });
+    }
+    return list;
+  }, [todayISO]);
 
-  const bodyWeights: BodyWeightEntry[] = useLiveQuery(async () => {
-    return await db.bodyWeights.orderBy('date').toArray();
-  }, []) ?? [];
-
-  const manual1RMs: Manual1RMEntry[] = useLiveQuery(async () => {
-    return await db.manual1RMs.orderBy('date').toArray();
-  }, []) ?? [];
-
-  const workoutData = useLiveQuery(async () => {
-    const days = await db.workoutDays.toArray();
-    const tasks = await db.plannedTasks.toArray();
-    const sets = await db.loggedSets.toArray();
-
-    const dayMap = new Map(days.map((d) => [d.id, d]));
-    const taskMap = new Map(tasks.map((t) => [t.id, t]));
-
-    return { days, tasks, sets, dayMap, taskMap };
+  // Funkcja wyśrodkowująca dzień dzisiejszy w poziomym pasku
+  const centerOnToday = React.useCallback((smooth = false) => {
+    if (!scrollRef.current) return;
+    const container = scrollRef.current;
+    const todayEl = container.querySelector<HTMLElement>('[data-today="true"]');
+    if (todayEl) {
+      const containerWidth = container.clientWidth;
+      const target = todayEl.offsetLeft - (containerWidth / 2) + (todayEl.offsetWidth / 2);
+      if (smooth) {
+        container.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
+      } else {
+        container.scrollLeft = Math.max(0, target);
+      }
+    } else {
+      container.scrollLeft = (container.scrollWidth - container.clientWidth) / 2;
+    }
   }, []);
 
-  const compoundExercises = useMemo(() => {
-    return exercises.filter((e) => e.calculate_1rm);
-  }, [exercises]);
+  // Przewiń na start tak, aby dzień dzisiejszy był dokładnie po środku
+  useEffect(() => {
+    centerOnToday(false);
+    const timer = setTimeout(() => {
+      centerOnToday(false);
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [centerOnToday]);
 
-  // Efektywne ID ćwiczenia do wykresu 1RM w subzakładce Maksy
-  const effectiveMaxExerciseId = useMemo(() => {
-    if (selectedMaxExerciseId) return selectedMaxExerciseId;
-    if (compoundExercises.length > 0) return compoundExercises[0].id!;
-    return null;
-  }, [selectedMaxExerciseId, compoundExercises]);
+  // Pobierz szablony dni z planu
+  const routineDays: RoutineDay[] = useLiveQuery(async () => {
+    return await db.routineDays.orderBy('day_number').toArray();
+  }, []) ?? [];
 
-  // Efektywne ID ćwiczenia do dodawania wpisu ręcznego
-  const effectiveManualExerciseId = manualExerciseId || effectiveMaxExerciseId;
+  // Live query wszystkich zaplanowanych dni
+  const allWorkoutDays = useLiveQuery(async () => {
+    return await db.workoutDays.toArray();
+  }, []) ?? [];
 
-  // --- LOGIKA SUBZAKŁADKI: MAKSY (WYKRES 1RM ŁĄCZĄCY TRENINGI I WPISY RĘCZNE) ---
-  const maxProgressionChartData = useMemo(() => {
-    if (!effectiveMaxExerciseId) return [];
+  const workoutDaysMap = new Map(allWorkoutDays.map((d) => [d.date, d]));
 
-    const dateRecordsMap = new Map<
-      string,
-      { oneRepMax: number; source: string; details?: string }
-    >();
+  // Live Query szczegółów dnia dla zaznaczonej daty (CZYSTY READ-ONLY BEZ EFEKTÓW UBOCZNYCH)
+  const dayData: FullDayDetails | null | undefined = useLiveQuery(
+    async () => {
+      return await getFullDayDetails(selectedDate);
+    },
+    [selectedDate]
+  );
 
-    // 1. Dodaj dane z zarejestrowanych sesji treningowych (formuła Epleya)
-    if (workoutData) {
-      const { sets, taskMap, dayMap } = workoutData;
-      const relevantSets = sets.filter((s) => {
-        const task = taskMap.get(s.task_id);
-        return task && task.exercise_id === effectiveMaxExerciseId;
-      });
+  // Szukanie ostatniej zakończonej sesji tego samego rodzaju w historii
+  const previousSessionSummary = useLiveQuery(async () => {
+    if (!dayData?.routine_day_id && (!dayData?.routine_day_name || dayData.routine_day_name.trim() === '')) {
+      return null;
+    }
+    return await findLastWorkoutSessionOfType(
+      selectedDate,
+      dayData?.routine_day_id,
+      dayData?.routine_day_name
+    );
+  }, [selectedDate, dayData?.routine_day_id, dayData?.routine_day_name]);
 
-      for (const set of relevantSets) {
-        const task = taskMap.get(set.task_id);
-        const day = task?.day_id ? dayMap.get(task.day_id) : undefined;
-        const date = day?.date;
-        if (!date) continue;
-
-        const est1RM = calculateEpley1RM(set.weight, set.reps);
-        const existing = dateRecordsMap.get(date);
-
-        if (!existing || est1RM > existing.oneRepMax) {
-          dateRecordsMap.set(date, {
-            oneRepMax: est1RM,
-            source: 'Trening (Epley)',
-            details: `${set.weight} kg × ${set.reps} (RIR ${set.rir})`,
-          });
-        }
-      }
+  const handleCopyPreviousSession = async () => {
+    if (!previousSessionSummary) {
+      setCopyErrorMsg('Brak poprzednich treningów tego typu w historii.');
+      setTimeout(() => setCopyErrorMsg(null), 3000);
+      return;
     }
 
-    // 2. Dodaj wpisy ręczne dla tego ćwiczenia
-    const relevantManuals = manual1RMs.filter((m) => m.exercise_id === effectiveMaxExerciseId);
-    for (const man of relevantManuals) {
-      const existing = dateRecordsMap.get(man.date);
-      if (!existing || man.weight >= existing.oneRepMax) {
-        dateRecordsMap.set(man.date, {
-          oneRepMax: man.weight,
-          source: 'Wpis ręczny',
-          details: 'Wprowadzony rekord',
-        });
-      }
+    try {
+      const res = await copyPreviousWorkoutSession(selectedDate, previousSessionSummary.dayId);
+      setIsConfirmCopyPrevious(false);
+      setCopyFeedbackMsg(
+        `Skopiowano ${res.tasksCopied} ćwiczeń i ${res.setsCopied} serii z treningu (${previousSessionSummary.date})!`
+      );
+      setTimeout(() => setCopyFeedbackMsg(null), 3500);
+    } catch (err) {
+      console.error('Błąd kopiowania sesji:', err);
     }
+  };
 
-    const sortedDates = Array.from(dateRecordsMap.keys()).sort((a, b) => a.localeCompare(b));
+  const handleSelectPlan = async (routineDayId: number) => {
+    await assignRoutineDayToDate(selectedDate, routineDayId);
+    setIsSelectPlanModalOpen(false);
+  };
 
-    return sortedDates.map((date) => {
-      const item = dateRecordsMap.get(date)!;
-      const parts = date.split('-');
-      const shortDate = parts.length === 3 ? `${parts[2]}.${parts[1]}` : date;
+  const handleDeleteTask = async (taskId?: number) => {
+    if (!taskId) return;
+    await removeTaskFromDay(taskId);
+  };
 
-      return {
-        date,
-        shortDate,
-        oneRepMax: item.oneRepMax,
-        source: item.source,
-        details: item.details,
-      };
-    });
-  }, [effectiveMaxExerciseId, workoutData, manual1RMs]);
+  const handleAddExtraExercise = async (exerciseId: number) => {
+    let dayId = dayData?.id;
+    if (!dayId) {
+      const newDay = await getOrCreateWorkoutDay(selectedDate, 'in_progress');
+      dayId = newDay.id!;
+    }
+    await addExtraExerciseToWorkoutDay(dayId, exerciseId, 0);
+    setIsAddExtraOpen(false);
+  };
 
-  // Lista podsumowania rekordów 1RM dla wszystkich ćwiczeń wielostawowych
-  const maxesSummaryList = useMemo(() => {
-    return compoundExercises.map((ex) => {
-      let best1RM: number | null = null;
-      let bestDate: string | null = null;
-      let bestSource = '';
-      let bestRecordId: number | null = null;
-      let bestRecordType: 'manual' | 'set' | null = null;
+  // Pobierz dotychczasowe rekordy sprzed wybranej daty sesji (lub ogólne w bazie)
+  const priorPRs = useLiveQuery(async () => {
+    return await getHistoricalPRs(selectedDate);
+  }, [selectedDate]) ?? new Map<number, ExerciseHistoricalPR>();
 
-      // Z treningów
-      if (workoutData) {
-        const { sets, taskMap, dayMap } = workoutData;
-        const relevantSets = sets.filter((s) => {
-          const task = taskMap.get(s.task_id);
-          return task && task.exercise_id === ex.id;
-        });
+  // Obliczanie rekordów (PR) osiągniętych w bieżącej sesji treningowej
+  const sessionPRs = React.useMemo(() => {
+    if (!dayData?.tasks) return [];
+    const list: Array<{
+      exerciseId: number;
+      exerciseName: string;
+      weight: number;
+      reps: number;
+      estimated1RM: number;
+      priorWeight: number;
+    }> = [];
 
-        for (const s of relevantSets) {
-          const task = taskMap.get(s.task_id);
-          const day = task?.day_id ? dayMap.get(task.day_id) : undefined;
-          const d = day?.date;
-          if (!d) continue;
+    for (const task of dayData.tasks) {
+      if (!task.exercise_id || task.sets.length === 0) continue;
+      const prior = priorPRs.get(task.exercise_id);
+      let topSet: LoggedSet | null = null;
+      let topEst = 0;
 
+      for (const s of task.sets) {
+        if (isSetNewPR(s.weight, s.reps, prior)) {
           const est = calculateEpley1RM(s.weight, s.reps);
-          if (best1RM === null || est > best1RM) {
-            best1RM = est;
-            bestDate = d;
-            bestSource = `Trening: ${s.weight} kg × ${s.reps}`;
-            bestRecordId = s.id ?? null;
-            bestRecordType = 'set';
+          if (!topSet || est > topEst || s.weight > topSet.weight) {
+            topSet = s;
+            topEst = est;
           }
         }
       }
 
-      // Z wpisów ręcznych
-      const relevantManuals = manual1RMs.filter((m) => m.exercise_id === ex.id);
-      for (const man of relevantManuals) {
-        if (best1RM === null || man.weight >= best1RM) {
-          best1RM = man.weight;
-          bestDate = man.date;
-          bestSource = 'Wpis ręczny';
-          bestRecordId = man.id ?? null;
-          bestRecordType = 'manual';
-        }
-      }
-
-      return {
-        exercise: ex,
-        best1RM,
-        date: bestDate,
-        source: bestSource,
-        recordId: bestRecordId,
-        recordType: bestRecordType,
-      };
-    });
-  }, [compoundExercises, workoutData, manual1RMs]);
-
-  // --- LOGIKA SUBZAKŁADKI: WYKRES CIĘŻARU W TRENINGU ---
-  const currentExerciseId = useMemo(() => {
-    if (selectedExerciseId) return selectedExerciseId;
-    if (exercises.length > 0) return exercises[0].id!;
-    return null;
-  }, [selectedExerciseId, exercises]);
-
-  const exerciseChartData = useMemo(() => {
-    if (!workoutData || !currentExerciseId) return [];
-
-    const { sets, taskMap, dayMap } = workoutData;
-
-    const relevantSets = sets.filter((s) => {
-      const task = taskMap.get(s.task_id);
-      return task && task.exercise_id === currentExerciseId;
-    });
-
-    if (relevantSets.length === 0) return [];
-
-    const perDateMap = new Map<
-      string,
-      { maxWeight: number; max1RM: number; reps: number; rir: number }
-    >();
-
-    for (const set of relevantSets) {
-      const task = taskMap.get(set.task_id);
-      const day = task?.day_id ? dayMap.get(task.day_id) : undefined;
-      const date = day?.date;
-      if (!date) continue;
-
-      const est1RM = calculateEpley1RM(set.weight, set.reps);
-      const existing = perDateMap.get(date);
-
-      if (!existing || set.weight > existing.maxWeight) {
-        perDateMap.set(date, {
-          maxWeight: set.weight,
-          max1RM: est1RM,
-          reps: set.reps,
-          rir: set.rir,
+      if (topSet) {
+        list.push({
+          exerciseId: task.exercise_id,
+          exerciseName: task.exercise?.name ?? 'Ćwiczenie',
+          weight: topSet.weight,
+          reps: topSet.reps,
+          estimated1RM: topEst,
+          priorWeight: prior?.maxWeight ?? 0,
         });
       }
     }
 
-    const sortedDates = Array.from(perDateMap.keys()).sort((a, b) => a.localeCompare(b));
+    return list;
+  }, [dayData, priorPRs]);
 
-    return sortedDates.map((date) => {
-      const item = perDateMap.get(date)!;
-      const parts = date.split('-');
-      const formattedDate = `${parts[2]}.${parts[1]}`;
+  const hasExercises = Boolean(dayData?.tasks && dayData.tasks.length > 0);
+  const hasTemplate = Boolean(dayData?.routine_day_id || (dayData?.routine_day_name && dayData.routine_day_name.trim() !== ''));
 
-      return {
-        date,
-        shortDate: formattedDate,
-        weight: item.maxWeight,
-        estimated1RM: item.max1RM,
-        reps: item.reps,
-        rir: item.rir,
-      };
-    });
-  }, [workoutData, currentExerciseId]);
+  // Bazowa liczba zaplanowanych serii z szablonu planu (jeśli przypisano szablon do tego dnia)
+  const templateTargetSets = useLiveQuery(async () => {
+    if (!dayData?.routine_day_id) return 0;
+    const routineExs = await db.routineExercises
+      .where('routine_day_id')
+      .equals(dayData.routine_day_id)
+      .toArray();
+    return routineExs.reduce((acc, re) => acc + (re.target_sets || 3), 0);
+  }, [dayData?.routine_day_id]) ?? 0;
 
-  const handleSaveWeight = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const val = parseFloat(newWeight);
-    if (!val || val <= 0) return;
-    await addOrUpdateBodyWeight(weightDate, val);
-  };
+  // Śledzenie szczytowej liczby zaplanowanych serii w sesji, aby usunięcie wykonanego ćwiczenia
+  // nie kurczyło mianownika i cofało pasek dokładnie o taką samą wartość procentową
+  const [sessionPeakTargets, setSessionPeakTargets] = useState<Record<string, number>>({});
 
-  const handleDeleteWeight = async (id?: number) => {
-    if (!id) return;
-    await deleteBodyWeight(id);
-  };
+  // Zadania zaplanowane w ramach planu (ćwiczenia dodane poza planem nie wpływają na pasek postępu)
+  const plannedTasks = React.useMemo(() => {
+    return (dayData?.tasks ?? []).filter((t) => !t.is_extra);
+  }, [dayData?.tasks]);
 
-  const handleAddManual1RMRecord = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!effectiveManualExerciseId) return;
-    const val = parseFloat(manualWeight);
-    if (!val || val <= 0) return;
+  const currentComputedTarget = React.useMemo(() => {
+    return plannedTasks.reduce((acc, t) => {
+      const planned = t.target_sets && t.target_sets > 0 ? t.target_sets : 3;
+      return acc + Math.max(planned, t.sets?.length || 0);
+    }, 0);
+  }, [plannedTasks]);
 
-    await addManual1RM(effectiveManualExerciseId, val, manualDate);
-    const exName = compoundExercises.find((e) => e.id === effectiveManualExerciseId)?.name || 'ćwiczenia';
-    const existingBest = maxesSummaryList.find((m) => m.exercise.id === effectiveManualExerciseId)?.best1RM ?? 0;
-    const isNewPR = existingBest > 0 && val > existingBest;
-
-    if (isNewPR) {
-      setManualSuccessMsg(`Nowy PR! Zapisano 1RM ${val} kg dla "${exName}"!`);
-    } else {
-      setManualSuccessMsg(`Zapisano 1RM ${val} kg dla "${exName}".`);
+  useEffect(() => {
+    if (currentComputedTarget > 0) {
+      setSessionPeakTargets((prev) => {
+        const prevVal = prev[selectedDate] || 0;
+        if (currentComputedTarget > prevVal) {
+          return { ...prev, [selectedDate]: currentComputedTarget };
+        }
+        return prev;
+      });
     }
-    setTimeout(() => setManualSuccessMsg(null), 3500);
-  };
+  }, [selectedDate, currentComputedTarget]);
 
-  const handleDeleteManual1RM = async (id?: number) => {
-    if (!id) return;
-    await deleteManual1RM(id);
-  };
+  // Obliczenie postępu treningu (wyłącznie serie z ćwiczeń w planie)
+  const totalCompletedSets = plannedTasks.reduce((acc, t) => acc + (t.sets?.length || 0), 0);
+  const baselineTarget = Math.max(
+    templateTargetSets,
+    sessionPeakTargets[selectedDate] || 0,
+    currentComputedTarget
+  );
+  const totalTargetSets = baselineTarget;
 
-  const handleDeleteMaxRecord = async (item: {
-    exercise: Exercise;
-    recordId: number | null;
-    recordType: 'manual' | 'set' | null;
-  }) => {
-    if (item.recordType === 'manual' && item.recordId) {
-      await deleteManual1RM(item.recordId);
-    } else if (item.recordType === 'set' && item.recordId) {
-      await delete1RMRecord('set', item.recordId);
-    } else if (item.exercise.id) {
-      await deleteExercise1RMRecords(item.exercise.id);
-    }
-    setConfirmDeleteExerciseId(null);
-  };
-
-  const currentExerciseObj = exercises.find((e) => e.id === currentExerciseId);
-  const currentMaxExerciseObj = compoundExercises.find((e) => e.id === effectiveMaxExerciseId);
-
-  const currentSelectedManualMaxItem = useMemo(() => {
-    return maxesSummaryList.find((m) => m.exercise.id === effectiveManualExerciseId);
-  }, [maxesSummaryList, effectiveManualExerciseId]);
-
-  const parsedManualWeightNum = parseFloat(manualWeight) || 0;
-  const isManualTypingPR =
-    parsedManualWeightNum > 0 &&
-    (!currentSelectedManualMaxItem?.best1RM || parsedManualWeightNum > currentSelectedManualMaxItem.best1RM);
+  const progressPercent = totalTargetSets > 0 && totalCompletedSets > 0
+    ? Math.min(100, Math.round((totalCompletedSets / totalTargetSets) * 100))
+    : 0;
 
   return (
     <div className="space-y-4 max-w-xl mx-auto text-zinc-100 font-sans">
-      {/* NATYWNY MOBILNY SEGMENTED CONTROL: [Wykresy], [Maksy], [Historia treningów] */}
-      <div className="grid grid-cols-3 rounded-none bg-gradient-to-r from-zinc-900 via-[#121215] to-zinc-950 border-2 border-zinc-700/80 p-1 text-[11px] sm:text-xs shadow-lg shadow-black/50">
-        <button
-          type="button"
-          onClick={() => setSubTab('charts')}
-          className={`rounded-none py-2 font-bold uppercase tracking-wider transition-all cursor-pointer text-center ${
-            subTab === 'charts'
-              ? 'bg-gradient-to-r from-red-600 to-red-800 text-white shadow-[0_0_10px_rgba(220,38,38,0.3)]'
-              : 'text-zinc-400 hover:text-zinc-200'
-          }`}
+      {/* 1. HORYZONTALNIE PRZEWIJANY PASEK DAT (PRZESZŁOŚĆ, DZIŚ W CENTRUM, PRZYSZŁOŚĆ) */}
+      <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-3.5 border-2 border-zinc-700/80 shadow-lg shadow-black/50">
+        <div className="flex items-center justify-between pb-2 mb-2 border-b border-zinc-800/80">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-zinc-400">
+              Dni treningowe
+            </span>
+            {selectedDate !== todayISO && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedDate(todayISO);
+                  centerOnToday(true);
+                }}
+                className="text-[10px] font-bold uppercase tracking-wider text-red-500 hover:text-red-400 bg-red-950/40 border border-red-900/60 px-2 py-0.5 cursor-pointer transition-colors"
+                title="Wróć do dzisiejszego dnia"
+              >
+                Dziś
+              </button>
+            )}
+          </div>
+          <span className="text-xs font-bold text-red-500 tracking-wide">
+            {formatPolishFriendlyDate(selectedDate)}
+          </span>
+        </div>
+        <div
+          ref={scrollRef}
+          className="relative flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1 px-0.5"
         >
-          Wykresy
-        </button>
-        <button
-          type="button"
-          onClick={() => setSubTab('maxes')}
-          className={`rounded-none py-2 font-bold uppercase tracking-wider transition-all cursor-pointer text-center ${
-            subTab === 'maxes'
-              ? 'bg-gradient-to-r from-red-600 to-red-800 text-white shadow-[0_0_10px_rgba(220,38,38,0.3)]'
-              : 'text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          Maksy
-        </button>
-        <button
-          type="button"
-          onClick={() => setSubTab('history')}
-          className={`rounded-none py-2 font-bold uppercase tracking-wider transition-all cursor-pointer text-center ${
-            subTab === 'history'
-              ? 'bg-gradient-to-r from-red-600 to-red-800 text-white shadow-[0_0_10px_rgba(220,38,38,0.3)]'
-              : 'text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          <span className="hidden sm:inline">Historia treningów</span>
-          <span className="sm:hidden">Historia</span>
-        </button>
+          {dateRange.map((item) => {
+            const isSelected = selectedDate === item.dateISO;
+            const hasWorkout = Boolean(workoutDaysMap.get(item.dateISO)?.routine_day_name);
+
+            return (
+              <button
+                key={item.dateISO}
+                data-today={item.isToday ? 'true' : undefined}
+                type="button"
+                onClick={() => setSelectedDate(item.dateISO)}
+                className={`relative flex flex-col items-center justify-center min-w-[52px] h-[66px] rounded-none transition-all shrink-0 cursor-pointer ${
+                  isSelected
+                    ? 'bg-gradient-to-b from-red-950 via-zinc-950 to-black text-white font-bold border-2 border-red-600 shadow-[0_0_12px_rgba(220,38,38,0.35)]'
+                    : item.isToday
+                    ? 'bg-gradient-to-b from-zinc-900 to-black text-red-500 font-bold border-2 border-red-800'
+                    : 'bg-gradient-to-b from-zinc-900/60 to-black text-zinc-400 hover:text-white border border-zinc-800 hover:border-zinc-600'
+                }`}
+              >
+                <span className="text-[11px] font-bold uppercase tracking-wider">
+                  {item.dayShort}
+                </span>
+                <span className="text-base font-bold mt-0.5">
+                  {item.dayNumber}
+                </span>
+
+                {/* Wskaźnik przypisanego treningu */}
+                <div className="mt-1 h-1.5 w-1.5 rounded-none">
+                  {hasWorkout && (
+                    <div
+                      className={`h-1.5 w-1.5 rounded-none ${
+                        isSelected ? 'bg-red-500' : 'bg-red-600'
+                      }`}
+                    />
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* SUBZAKŁADKA 1: WYKRESY */}
-      {subTab === 'charts' && (
-        <div className="space-y-4">
-          {/* Przełącznik: Wykres ćwiczenia / Masa ciała */}
-          <div className="flex rounded-none bg-gradient-to-r from-zinc-900 to-black border-2 border-zinc-800 p-1 text-xs shadow-none">
-            <button
-              type="button"
-              onClick={() => setChartType('exercise')}
-              className={`flex-1 rounded-none py-1.5 font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                chartType === 'exercise'
-                  ? 'bg-gradient-to-r from-zinc-800 to-zinc-900 text-white border border-zinc-700'
-                  : 'text-zinc-400 hover:text-zinc-200'
+      {/* 1.5. ZBIORNIK KRWI - POSTĘP SESJI TRENINGOWEJ */}
+      <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-3 sm:p-3.5 border-2 border-zinc-700/80 shadow-lg shadow-black/50">
+        <div className="flex items-center justify-between pb-2 mb-2 border-b border-zinc-800/80">
+          <div className="flex items-center gap-2">
+            <Droplet
+              className={`h-3.5 w-3.5 transition-colors ${
+                progressPercent > 0
+                  ? 'text-red-500 fill-red-600 animate-pulse'
+                  : 'text-zinc-500 fill-zinc-700'
               }`}
-            >
-              Ciężar ćwiczenia
-            </button>
-            <button
-              type="button"
-              onClick={() => setChartType('weight')}
-              className={`flex-1 rounded-none py-1.5 font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                chartType === 'weight'
-                  ? 'bg-gradient-to-r from-zinc-800 to-zinc-900 text-white border border-zinc-700'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              Masa ciała
-            </button>
+            />
+            <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
+              Postęp treningu
+            </span>
           </div>
 
-          {chartType === 'exercise' ? (
-            <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 shadow-lg shadow-black/50">
-              {/* Wybór ćwiczenia */}
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b-2 border-zinc-800 gap-3">
-                <div>
-                  <span className="text-xs font-semibold text-red-500 uppercase tracking-wider">
-                    Historia obciążeń
-                  </span>
-                  <h3 className="text-base font-bold text-white tracking-wide uppercase">
-                    Wykres progresu
-                  </h3>
-                </div>
+          <div className="flex items-center gap-2 text-xs">
+            {totalTargetSets > 0 ? (
+              <>
+                <span className="text-zinc-400 font-mono text-[11px]">
+                  {totalCompletedSets}/{totalTargetSets} {getSetsWord(totalTargetSets)}
+                </span>
+                <span
+                  className={`font-bold font-mono tracking-wide ${
+                    progressPercent === 100
+                      ? 'text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.7)]'
+                      : 'text-red-500'
+                  }`}
+                >
+                  {progressPercent}%
+                </span>
+              </>
+            ) : (
+              <span className="text-zinc-500 text-[11px]">
+                Brak zaplanowanych serii
+              </span>
+            )}
+          </div>
+        </div>
 
-                <div className="relative min-w-[200px]">
-                  <select
-                    value={currentExerciseId ?? ''}
-                    onChange={(e) => setSelectedExerciseId(Number(e.target.value))}
-                    className="w-full appearance-none rounded-none border border-zinc-700 bg-black px-3 py-2 pr-8 text-xs font-semibold text-white focus:border-red-600 focus:outline-none uppercase"
-                  >
-                    {exercises.map((ex) => (
-                      <option key={ex.id} value={ex.id}>
-                        {ex.name} ({ex.muscle_group})
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-                </div>
-              </div>
+        {/* Szklany zbiornik / fiolka napełniająca się krwią */}
+        <div className="relative w-full h-3.5 bg-black/90 border border-zinc-700/90 overflow-hidden shadow-[inset_0_2px_5px_rgba(0,0,0,0.95)]">
+          {/* Krew napełniająca zbiornik */}
+          <div
+            className="h-full bg-gradient-to-r from-red-950 via-red-700 to-red-600 transition-all duration-700 ease-out relative shadow-[0_0_12px_rgba(220,38,38,0.6)]"
+            style={{ width: `${progressPercent}%` }}
+          >
+            {/* Lśniący brzeg płynu (menisk krwi) */}
+            {progressPercent > 0 && (
+              <div className="absolute right-0 top-0 bottom-0 w-2 bg-gradient-to-r from-transparent to-red-300 opacity-90 shadow-[0_0_10px_rgba(254,202,202,0.9)]" />
+            )}
+            {/* Połysk światła na szklanej powierzchni cieczy */}
+            <div className="absolute inset-x-0 top-0 h-[1.5px] bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+          </div>
+        </div>
+      </div>
 
-              {/* Wykres Recharts */}
-              <div className="mt-4 pt-2">
-                {exerciseChartData.length === 0 ? (
-                  <div className="py-10 px-6 text-center rounded-none bg-black/60 border border-zinc-800 flex flex-col items-center justify-center">
-                    <p className="text-sm font-semibold text-zinc-300 max-w-sm mx-auto leading-relaxed text-balance">
-                      Brak danych treningowych dla{' '}
-                      <span className="text-white font-bold">{currentExerciseObj?.name ?? 'wybranego ćwiczenia'}</span>.
-                    </p>
-                    <p className="mt-2 text-xs text-zinc-500 max-w-xs mx-auto leading-relaxed">
-                      Wykonaj serię w zakładce Trening, aby wygenerować wykres.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="w-full h-64 -ml-2">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart
-                        data={exerciseChartData}
-                        margin={{ top: 15, right: 15, left: -10, bottom: 5 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                        <XAxis
-                          dataKey="shortDate"
-                          tick={{ fontSize: 11, fill: '#a1a1aa' }}
-                          stroke="#52525b"
-                          tickLine={false}
-                        />
-                        <YAxis
-                          domain={['dataMin - 5', 'dataMax + 5']}
-                          tick={{ fontSize: 11, fill: '#a1a1aa' }}
-                          stroke="#52525b"
-                          tickLine={false}
-                          unit=" kg"
-                        />
-                        <Tooltip content={<CustomChartTooltip />} />
-                        <Line
-                          type="monotone"
-                          dataKey="weight"
-                          name="Podniesiony ciężar"
-                          stroke="#dc2626"
-                          strokeWidth={2.5}
-                          dot={{
-                            r: 4.5,
-                            fill: '#991b1b',
-                            stroke: '#09090b',
-                            strokeWidth: 2,
-                          }}
-                          activeDot={{
-                            r: 6.5,
-                            fill: '#ef4444',
-                            stroke: '#09090b',
-                            strokeWidth: 2,
-                          }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 space-y-4 shadow-lg shadow-black/50">
-              <div className="flex items-baseline justify-between">
-                <div>
-                  <span className="text-xs font-semibold text-red-500 uppercase tracking-wider">
-                    Ostatni pomiar masy ciała
-                  </span>
-                  <div className="mt-1 flex items-baseline gap-1.5">
-                    <span className="text-3xl font-bold text-white">
-                      {bodyWeights.length > 0 ? bodyWeights[bodyWeights.length - 1].weight : '—'}
-                    </span>
-                    <span className="text-sm font-bold text-zinc-400">kg</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Wykres wagi */}
-              {bodyWeights.length < 2 ? (
-                <div className="py-8 text-center text-xs text-zinc-400 rounded-none bg-black border-2 border-dashed border-zinc-800">
-                  Wprowadź co najmniej 2 pomiary wagi, aby zobaczyć wykres trendu.
-                </div>
-              ) : (
-                <div className="w-full h-52 -ml-2">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart
-                      data={bodyWeights.map((w) => ({
-                        date: w.date.slice(5),
-                        fullDate: w.date,
-                        weight: w.weight,
-                      }))}
-                      margin={{ top: 10, right: 15, left: -10, bottom: 0 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                      <XAxis
-                        dataKey="date"
-                        tick={{ fontSize: 11, fill: '#a1a1aa' }}
-                        stroke="#3f3f46"
-                        tickLine={false}
-                      />
-                      <YAxis
-                        domain={['dataMin - 1', 'dataMax + 1']}
-                        tick={{ fontSize: 11, fill: '#a1a1aa' }}
-                        stroke="#3f3f46"
-                        tickLine={false}
-                        unit=" kg"
-                      />
-                      <Tooltip content={<CustomWeightTooltip />} />
-                      <Line
-                        type="monotone"
-                        dataKey="weight"
-                        stroke="#dc2626"
-                        strokeWidth={2.5}
-                        dot={{
-                          r: 4.5,
-                          fill: '#991b1b',
-                          stroke: '#09090b',
-                          strokeWidth: 2,
-                        }}
-                        activeDot={{
-                          r: 6.5,
-                          fill: '#ef4444',
-                          stroke: '#09090b',
-                          strokeWidth: 2,
-                        }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-
-              {/* Formularz wprowadzania wagi */}
-              <form onSubmit={handleSaveWeight} className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t-2 border-zinc-800">
-                <div>
-                  <label className="block text-xs font-medium text-zinc-300 mb-1">
-                    Data pomiaru
-                  </label>
-                  <input
-                    type="date"
-                    value={weightDate}
-                    onChange={(e) => setWeightDate(e.target.value)}
-                    className="w-full rounded-none border border-zinc-700 bg-black px-3 py-1.5 text-xs text-white focus:border-red-600 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-zinc-300 mb-1">
-                    Waga (kg)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="30"
-                    max="300"
-                    value={newWeight}
-                    onChange={(e) => setNewWeight(e.target.value)}
-                    className="w-full rounded-none border border-zinc-700 bg-black px-3 py-1.5 text-xs text-white focus:border-red-600 focus:outline-none"
-                  />
-                </div>
-                <div className="flex items-end">
+      {/* 2. NAGŁÓWEK SESJI */}
+      <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 shadow-lg shadow-black/50">
+        <div>
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-2 bg-gradient-to-r from-red-600 to-red-800"></div>
+            <span className="text-xs font-bold text-red-500 tracking-wide">
+              {formatPolishFriendlyDate(selectedDate)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between mt-1">
+            <h2 className="text-base sm:text-lg font-bold text-white tracking-wider uppercase">
+              {dayData?.routine_day_name || 'Trening dzienny'}
+            </h2>
+            {(dayData?.routine_day_name || (dayData?.tasks && dayData.tasks.length > 0)) && (
+              isConfirmDeleteSession ? (
+                <div className="flex items-center gap-2 ml-4">
+                  <span className="text-xs text-zinc-300">Usunąć trening?</span>
                   <button
-                    type="submit"
-                    style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
-                    className="w-full rounded-none bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider py-2 text-xs transition-colors cursor-pointer"
+                    type="button"
+                    onClick={async () => {
+                      await deleteWorkoutSessionByDate(selectedDate);
+                      setSessionPeakTargets((prev) => {
+                        const next = { ...prev };
+                        delete next[selectedDate];
+                        return next;
+                      });
+                      setIsConfirmDeleteSession(false);
+                    }}
+                    className="rounded-none bg-red-700 hover:bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white uppercase cursor-pointer"
                   >
-                    Zapisz pomiar
+                    Tak, usuń
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsConfirmDeleteSession(false)}
+                    className="rounded-none bg-black border border-zinc-800 px-2 py-0.5 text-xs text-zinc-400 hover:text-white cursor-pointer"
+                  >
+                    Anuluj
                   </button>
                 </div>
-              </form>
-
-              {/* Historia wpisów wagi */}
-              {bodyWeights.length > 0 && (
-                <div className="divide-y-2 divide-zinc-900 text-xs max-h-36 overflow-y-auto pt-2">
-                  {bodyWeights
-                    .slice()
-                    .reverse()
-                    .map((entry) => (
-                      <div
-                        key={entry.id}
-                        className="flex items-center justify-between py-1.5 px-1 hover:bg-zinc-900 rounded-none"
-                      >
-                        <span className="text-zinc-400">{entry.date}</span>
-                        <div className="flex items-center gap-3">
-                          <span className="font-bold text-white">{entry.weight} kg</span>
-                          <button
-                            onClick={() => handleDeleteWeight(entry.id)}
-                            className="text-zinc-500 hover:text-rose-400 p-1 cursor-pointer"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* SUBZAKŁADKA 2: MAKSY (WYKRES LINIOWY 1RM, RĘCZNE DODAWAJIE I PODSUMOWANIE) */}
-      {subTab === 'maxes' && (
-        <div className="space-y-4">
-          {/* 1. WYKRES LINIOWY PROGRESJI 1RM */}
-          <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 shadow-lg shadow-black/50">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b-2 border-zinc-800 gap-3">
-              <div>
-                <span className="text-xs font-semibold text-red-500 uppercase tracking-wider">
-                  Progresja siłowa
-                </span>
-                <h3 className="text-base font-bold text-white tracking-wide uppercase">
-                  Wykres maksów (1RM)
-                </h3>
-              </div>
-
-              {/* Wybór boju wielostawowego */}
-              <div className="relative min-w-[200px]">
-                <select
-                  value={effectiveMaxExerciseId ?? ''}
-                  onChange={(e) => setSelectedMaxExerciseId(Number(e.target.value))}
-                  className="w-full appearance-none rounded-none border border-zinc-700 bg-black px-3 py-2 pr-8 text-xs font-semibold text-white focus:border-red-600 focus:outline-none uppercase"
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmDeleteSession(true)}
+                  className="text-red-500 hover:text-red-400 font-bold uppercase text-xs border-b border-red-900 pb-0.5 ml-4 cursor-pointer tracking-wider"
+                  title="Usuń ten trening z bazy i historii"
                 >
-                  {compoundExercises.map((ex) => (
-                    <option key={ex.id} value={ex.id}>
-                      {ex.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-              </div>
-            </div>
+                  Usuń trening
+                </button>
+              )
+            )}
+          </div>
+        </div>
 
-            {/* Wykres Recharts dla 1RM */}
-            <div className="mt-4 pt-1">
-              {maxProgressionChartData.length === 0 ? (
-                <div className="py-10 px-6 text-center rounded-none bg-black/60 border border-zinc-800 flex flex-col items-center justify-center">
-                  <p className="text-sm font-semibold text-zinc-300 max-w-sm mx-auto leading-relaxed text-balance">
-                    Brak danych 1RM dla{' '}
-                    <span className="text-white font-bold">{currentMaxExerciseObj?.name ?? 'wybranego ćwiczenia'}</span>.
-                  </p>
-                  <p className="mt-2 text-xs text-zinc-500 max-w-xs mx-auto leading-relaxed">
-                    Wykonaj trening z tym ćwiczeniem lub dodaj własny rekord w formularzu poniżej.
-                  </p>
+        {/* Pasek akcji: Kopiowanie z poprzedniego treningu - tylko po wybraniu szablonu */}
+        {hasTemplate && (
+          <div className="mt-3 pt-3 border-t-2 border-zinc-800 space-y-2">
+            {previousSessionSummary ? (
+              isConfirmCopyPrevious ? (
+                <div className="flex flex-col sm:flex-row items-center justify-center text-center gap-2.5 p-2.5 bg-black border border-red-800 w-full animate-in fade-in duration-150">
+                  <span className="text-xs text-zinc-300">
+                    Zastąpić dotychczasowe serie danymi z ostatniego treningu ({previousSessionSummary.date})?
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCopyPreviousSession}
+                      className="rounded-none bg-red-700 hover:bg-red-600 px-3 py-1 text-xs font-bold text-white uppercase cursor-pointer"
+                    >
+                      Tak, wczytaj
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsConfirmCopyPrevious(false)}
+                      className="rounded-none bg-black border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 hover:text-white cursor-pointer"
+                    >
+                      Anuluj
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <div className="w-full h-60 -ml-2">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart
-                      data={maxProgressionChartData}
-                      margin={{ top: 15, right: 15, left: -10, bottom: 5 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                      <XAxis
-                        dataKey="shortDate"
-                        tick={{ fontSize: 11, fill: '#a1a1aa' }}
-                        stroke="#3f3f46"
-                        tickLine={false}
-                      />
-                      <YAxis
-                        domain={['dataMin - 5', 'dataMax + 5']}
-                        tick={{ fontSize: 11, fill: '#a1a1aa' }}
-                        stroke="#3f3f46"
-                        tickLine={false}
-                        unit=" kg"
-                      />
-                      <Tooltip content={<CustomMaxTooltip />} />
-                      <Line
-                        type="monotone"
-                        dataKey="oneRepMax"
-                        name="Szacowany 1RM"
-                        stroke="#dc2626"
-                        strokeWidth={2.5}
-                        dot={{
-                          r: 4.5,
-                          fill: '#991b1b',
-                          stroke: '#09090b',
-                          strokeWidth: 2,
-                        }}
-                        activeDot={{
-                          r: 6.5,
-                          fill: '#ef4444',
-                          stroke: '#09090b',
-                          strokeWidth: 2,
-                        }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
+                <div className="flex items-center justify-center w-full">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (dayData?.totalSets && dayData.totalSets > 0) {
+                        setIsConfirmCopyPrevious(true);
+                      } else {
+                        handleCopyPreviousSession();
+                      }
+                    }}
+                    style={{ clipPath: 'polygon(4% 0, 100% 0, 96% 100%, 0 100%)' }}
+                    className="inline-flex items-center justify-center gap-2 rounded-none bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider px-4 py-2 text-xs transition-colors cursor-pointer shadow-none"
+                    title={`Wczytaj ostatni trening z dnia ${previousSessionSummary.date}`}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 stroke-[2.3]" />
+                    <span>Skopiuj z poprzedniego razu</span>
+                    <span className="text-[10px] text-red-200 opacity-90 font-normal">
+                      ({previousSessionSummary.date})
+                    </span>
+                  </button>
                 </div>
-              )}
-            </div>
-          </div>
-
-          {/* 2. DYSKRETNY FORMULARZ: DODAJ WŁASNY REKORD 1RM */}
-          <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 space-y-3 shadow-lg shadow-black/50">
-            <div className="flex items-center justify-between pb-2 border-b-2 border-zinc-800">
-              <div>
-                <span className="text-xs font-semibold text-red-500 uppercase tracking-wider">
-                  Rejestracja rekordu
-                </span>
-                <h4 className="text-sm font-bold text-white tracking-wide uppercase">
-                  Dodaj własny rekord 1RM
-                </h4>
-              </div>
-            </div>
-
-            {manualSuccessMsg && (
-              <div className="flex items-center gap-2 rounded-none bg-emerald-950/70 p-2.5 text-xs font-semibold text-emerald-300 border-2 border-emerald-800">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
-                <span>{manualSuccessMsg}</span>
+              )
+            ) : (
+              <div className="flex items-center justify-center w-full">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCopyErrorMsg('Brak poprzednich treningów tego typu w historii.');
+                    setTimeout(() => setCopyErrorMsg(null), 3000);
+                  }}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-none bg-zinc-900 border border-zinc-800 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider text-zinc-500 hover:text-zinc-400 cursor-pointer transition-colors"
+                  title="Brak poprzednich treningów tego typu"
+                >
+                  <RotateCcw className="h-3.5 w-3.5 text-zinc-600" />
+                  <span>Skopiuj z poprzedniego razu</span>
+                </button>
               </div>
             )}
 
-            <form onSubmit={handleAddManual1RMRecord} className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 pt-1">
-              {/* Wybór ćwiczenia */}
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-medium text-zinc-300 mb-1">
-                  Ćwiczenie
-                </label>
-                <div className="relative">
-                  <select
-                    value={effectiveManualExerciseId ?? ''}
-                    onChange={(e) => setManualExerciseId(Number(e.target.value))}
-                    className="w-full appearance-none rounded-none border border-zinc-700 bg-black px-3 py-1.5 pr-8 text-xs text-white focus:border-red-600 focus:outline-none uppercase"
-                  >
-                    {compoundExercises.map((ex) => (
-                      <option key={ex.id} value={ex.id}>
-                        {ex.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-400" />
-                </div>
+            {copyFeedbackMsg && (
+              <div className="text-xs font-semibold text-emerald-400 pt-1 text-center animate-in fade-in">
+                {copyFeedbackMsg}
               </div>
-
-              {/* Ciężar 1RM */}
-              <div>
-                <label className="block text-xs font-medium text-zinc-300 mb-1">
-                  Ciężar 1RM (kg)
-                </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="1"
-                  max="600"
-                  required
-                  value={manualWeight}
-                  onChange={(e) => setManualWeight(e.target.value)}
-                  className="w-full rounded-none border border-zinc-700 bg-black px-3 py-1.5 text-xs text-white focus:border-red-600 focus:outline-none"
-                />
+            )}
+            {copyErrorMsg && (
+              <div className="text-xs font-semibold text-amber-400 pt-1 text-center animate-in fade-in">
+                {copyErrorMsg}
               </div>
-
-              {/* Data */}
-              <div>
-                <label className="block text-xs font-medium text-zinc-300 mb-1">
-                  Data rekordu
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={manualDate}
-                  onChange={(e) => setManualDate(e.target.value)}
-                  className="w-full rounded-none border border-zinc-700 bg-black px-2.5 py-1.5 text-xs text-white focus:border-red-600 focus:outline-none"
-                />
-              </div>
-
-              {/* Wykrywanie nowego rekordu w czasie rzeczywistym */}
-              {isManualTypingPR && currentSelectedManualMaxItem?.best1RM && (
-                <div className="sm:col-span-4 flex items-center gap-2 p-2.5 bg-red-950/60 border border-red-700/80 animate-in fade-in duration-150">
-                  <Flame className="h-4 w-4 fill-red-600 text-red-600 shrink-0 animate-pulse" />
-                  <span className="text-xs font-bold text-red-400 font-sans tracking-wide">
-                    Nowy PR!
-                    <span className="text-zinc-300 ml-1.5 font-normal">
-                      Dotychczasowy rekord dla tego boju: {currentSelectedManualMaxItem.best1RM} kg
-                    </span>
-                  </span>
-                </div>
-              )}
-
-              {/* Przycisk */}
-              <div className="sm:col-span-4 flex justify-end pt-1">
-                <button
-                  type="submit"
-                  style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
-                  className="inline-flex items-center gap-1.5 rounded-none bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider px-4 py-2 text-xs transition-colors cursor-pointer"
-                >
-                  <span className="text-sm font-bold leading-none">+</span>
-                  <span>Zapisz rekord 1RM</span>
-                </button>
-              </div>
-            </form>
+            )}
           </div>
+        )}
 
-          {/* 3. AKTUALNE MAKSY (PODSUMOWANIE DLA WSZYSTKICH BOJÓW WIELOSTAWOWYCH) */}
-          <div className="space-y-2.5">
-            <div className="px-1 flex items-center justify-between">
-              <h4 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
-                Podsumowanie rekordów (Najwyższy 1RM)
-              </h4>
+        {/* Jeśli brak przypisanego planu na ten dzień */}
+        {!hasExercises && (
+          <div className="mt-3 pt-3 border-t border-zinc-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <span className="text-xs text-zinc-400">
+              Brak zaplanowanego treningu na ten dzień.
+            </span>
+            <button
+              onClick={() => setIsSelectPlanModalOpen(true)}
+              style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
+              className="inline-flex items-center justify-center gap-1.5 rounded-none bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider px-4 py-2 text-xs transition-colors cursor-pointer shadow-none"
+            >
+              <Dumbbell className="h-3.5 w-3.5" />
+              <span>Wybierz plan</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* 3. LISTA ĆWICZEŃ */}
+      <div className="space-y-3">
+        {hasExercises &&
+          dayData?.tasks.map((task, index) => (
+            <ExerciseSessionCard
+              key={task.id}
+              task={task}
+              index={index}
+              priorPR={task.exercise_id ? priorPRs.get(task.exercise_id) : undefined}
+              onDeleteExercise={() => handleDeleteTask(task.id)}
+            />
+          ))}
+
+        {/* 4. PRZYCISK: DODAJ ĆWICZENIE POZA PLANEM */}
+        <div className="pt-1">
+          <button
+            type="button"
+            onClick={() => setIsAddExtraOpen(true)}
+            className="flex w-full items-center justify-center gap-2 rounded-none border-2 border-dashed border-zinc-800 bg-gradient-to-b from-zinc-950 to-black py-3.5 text-xs font-bold uppercase tracking-wider text-zinc-300 hover:border-red-700 hover:text-white transition-colors cursor-pointer"
+          >
+            <span className="text-base font-bold text-red-500 leading-none">+</span>
+            <span>Dodaj ćwiczenie poza planem</span>
+          </button>
+        </div>
+
+        {/* 5. PODSUMOWANIE SESJI TRENINGOWEJ (Z LISTĄ NOWYCH REKORDÓW) */}
+        {dayData && dayData.tasks.some((t) => t.sets.length > 0) && (
+          <div className="mt-4 rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 shadow-lg shadow-black/50 space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b-2 border-zinc-800">
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 bg-gradient-to-r from-red-600 to-red-800"></div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider font-sans">
+                  Podsumowanie treningu
+                </h3>
+              </div>
+              <span className="text-xs text-zinc-400 font-sans">
+                {formatPolishFriendlyDate(selectedDate)}
+              </span>
             </div>
 
-            <div className="space-y-2">
-              {maxesSummaryList.map((item) => {
-                const hasData = item.best1RM !== null;
-                const isConfirming = confirmDeleteExerciseId === item.exercise.id;
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-center">
+              <div className="bg-black/60 border border-zinc-800 p-2.5">
+                <span className="block text-[10px] text-zinc-400 uppercase font-bold">Łączny tonaż</span>
+                <span className="text-base font-bold text-white font-sans">{dayData.totalTonnage} kg</span>
+              </div>
+              <div className="bg-black/60 border border-zinc-800 p-2.5">
+                <span className="block text-[10px] text-zinc-400 uppercase font-bold">Zrobione serie</span>
+                <span className="text-base font-bold text-white font-sans">{dayData.totalSets}</span>
+              </div>
+              <div className="bg-black/60 border border-zinc-800 p-2.5 col-span-2 sm:col-span-1">
+                <span className="block text-[10px] text-zinc-400 uppercase font-bold">Nowe PR</span>
+                <span className="text-base font-bold text-red-500 font-sans flex items-center justify-center gap-1">
+                  <Flame className="h-4 w-4 fill-red-600 text-red-600 inline" />
+                  {sessionPRs.length}
+                </span>
+              </div>
+            </div>
 
-                return (
-                  <div
-                    key={item.exercise.id}
-                    className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-3.5 border-2 border-zinc-700/80 space-y-1 shadow-md shadow-black/40"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h4 className="text-xs font-bold text-white uppercase">
-                          {item.exercise.name}
-                        </h4>
-                        <span className="text-[10px] text-zinc-400 uppercase tracking-wider font-semibold">
-                          {item.exercise.muscle_group}
+            {sessionPRs.length > 0 && (
+              <div className="mt-3 pt-3 border-t-2 border-zinc-800 space-y-2">
+                <span className="text-xs font-bold text-red-400 uppercase tracking-wider block font-sans">
+                  Ustanowione PR w tej sesji:
+                </span>
+                <div className="space-y-1.5">
+                  {sessionPRs.map((sr) => (
+                    <div
+                      key={sr.exerciseId}
+                      className="flex flex-wrap items-center justify-between bg-black/80 border border-red-900/60 p-2.5 gap-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Flame className="h-4 w-4 fill-red-600 text-red-600 shrink-0" />
+                        <span className="text-xs font-bold text-white uppercase font-sans">
+                          {sr.exerciseName}
                         </span>
                       </div>
-
-                      <div className="text-right">
-                        {hasData ? (
-                          <div className="flex items-center gap-2 justify-end">
-                            <div className="flex items-baseline gap-1 justify-end">
-                              <span className="text-lg font-bold text-red-500 font-sans">
-                                {item.best1RM}
-                              </span>
-                              <span className="text-xs font-bold text-zinc-300 font-sans">kg 1RM</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setConfirmDeleteExerciseId(item.exercise.id!)}
-                              className="text-zinc-500 hover:text-rose-400 p-1 cursor-pointer transition-colors"
-                              title="Usuń ten rekord"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-zinc-500">
-                            Brak wpisów
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-red-500 font-sans">
+                          {sr.weight} kg × {sr.reps}
+                        </span>
+                        {sr.estimated1RM > 0 && (
+                          <span className="text-[10px] text-zinc-400 font-sans">
+                            (1RM: {sr.estimated1RM} kg)
                           </span>
                         )}
+                        <span className="rounded-none bg-red-950 border border-red-700 px-1.5 py-0.5 text-[9px] font-bold text-red-400 font-sans">
+                          Nowy PR!
+                        </span>
                       </div>
                     </div>
-
-                    {hasData && (
-                      <div className="pt-1.5 border-t-2 border-zinc-900 text-[10px] text-zinc-400 flex items-center justify-between">
-                        <span>{item.source}</span>
-                        <span>{item.date}</span>
-                      </div>
-                    )}
-
-                    {isConfirming && (
-                      <div className="pt-2 mt-2 border-t-2 border-zinc-800 flex items-center justify-between text-xs animate-in fade-in duration-150">
-                        <span className="text-zinc-300">Usunąć ten rekord?</span>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteMaxRecord(item)}
-                            className="rounded-none bg-red-700 hover:bg-red-600 px-2.5 py-1 text-[11px] font-bold text-white uppercase cursor-pointer"
-                          >
-                            Usuń
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDeleteExerciseId(null)}
-                            className="rounded-none bg-black border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400 hover:text-white cursor-pointer"
-                          >
-                            Anuluj
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 4. HISTORIA WPISÓW RĘCZNYCH (Z MOŻLIWOŚCIĄ USUNIĘCIA) */}
-          {manual1RMs.length > 0 && (
-            <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 border-2 border-zinc-700/80 space-y-2 shadow-lg shadow-black/50">
-              <h4 className="text-xs font-semibold text-zinc-200 uppercase tracking-wider">
-                Historia wpisów ręcznych 1RM
-              </h4>
-
-              <div className="divide-y-2 divide-zinc-900 text-xs max-h-48 overflow-y-auto">
-                {manual1RMs
-                  .slice()
-                  .reverse()
-                  .map((entry) => {
-                    const ex = exercises.find((e) => e.id === entry.exercise_id);
-                    const isConfirming = confirmDeleteManualId === entry.id;
-                    const maxForEx = maxesSummaryList.find((m) => m.exercise.id === entry.exercise_id)?.best1RM;
-                    const isTopRecord = maxForEx !== null && maxForEx !== undefined && entry.weight >= maxForEx;
-
-                    return (
-                      <div
-                        key={entry.id}
-                        className="flex items-center justify-between py-2 px-1 hover:bg-zinc-900/60 rounded-none transition-colors"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="text-zinc-500">{entry.date}</span>
-                          <span className="font-sans text-zinc-200 font-medium truncate max-w-[140px]">
-                            {ex?.name ?? 'Ćwiczenie'}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-red-500 font-sans">{entry.weight} kg</span>
-                            {isTopRecord && (
-                              <span className="inline-flex items-center gap-1 bg-red-950/80 border border-red-700/80 px-1.5 py-0.5 text-[9px] font-bold text-red-400 font-sans">
-                                <Flame className="h-2.5 w-2.5 fill-red-600 text-red-600 shrink-0" />
-                                PR
-                              </span>
-                            )}
-                          </div>
-                          {isConfirming ? (
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  await handleDeleteManual1RM(entry.id);
-                                  setConfirmDeleteManualId(null);
-                                }}
-                                className="rounded-none bg-red-700 hover:bg-red-600 px-2 py-0.5 text-[10px] font-bold text-white uppercase cursor-pointer"
-                              >
-                                Usuń
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setConfirmDeleteManualId(null)}
-                                className="rounded-none bg-black border border-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400 hover:text-white cursor-pointer"
-                              >
-                                Anuluj
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setConfirmDeleteManualId(entry.id!)}
-                              className="text-zinc-500 hover:text-rose-400 p-1 cursor-pointer transition-colors"
-                              title="Usuń wpis"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                  ))}
+                </div>
               </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Modal: Wybierz plan z listy */}
+      {isSelectPlanModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/90 animate-in fade-in duration-150">
+          <div className="relative w-full max-w-md rounded-none border-2 border-zinc-700 bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b-2 border-zinc-800">
+              <div>
+                <span className="text-xs font-semibold text-red-500 uppercase tracking-wider">
+                  Wybór planu treningowego
+                </span>
+                <h3 className="text-base font-bold text-white tracking-wider uppercase">
+                  Wybierz plan ({formatPolishFriendlyDate(selectedDate)})
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsSelectPlanModalOpen(false)}
+                className="rounded-none border border-zinc-800 bg-black p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white cursor-pointer"
+              >
+                ✕
+              </button>
             </div>
-          )}
+
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              {routineDays.length === 0 ? (
+                <p className="text-xs text-zinc-400 py-4 text-center">
+                  Brak dni treningowych w bazie. Utwórz najpierw dzień w harmonogramie.
+                </p>
+              ) : (
+                routineDays.map((rd) => (
+                  <button
+                    key={rd.id}
+                    type="button"
+                    onClick={() => handleSelectPlan(rd.id!)}
+                    className="flex w-full items-center justify-between p-3.5 rounded-none border border-zinc-800 bg-black hover:border-red-700 text-left transition-colors cursor-pointer"
+                  >
+                    <div>
+                      <span className="text-xs font-bold text-white uppercase">
+                        {rd.name}
+                      </span>
+                    </div>
+                    <span className="text-xs font-bold text-red-500 uppercase">
+                      Załaduj →
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+
+            <button
+              onClick={() => setIsSelectPlanModalOpen(false)}
+              className="w-full rounded-none border border-zinc-800 bg-black py-2.5 text-xs font-bold uppercase tracking-wider text-zinc-300 hover:bg-zinc-900 cursor-pointer"
+            >
+              Anuluj
+            </button>
+          </div>
         </div>
       )}
 
-      {/* SUBZAKŁADKA 3: HISTORIA TRENINGÓW */}
-      {subTab === 'history' && <WorkoutHistoryView />}
+      {/* Modal: Dodaj ćwiczenie poza planem */}
+      <AddExerciseModal
+        isOpen={isAddExtraOpen}
+        onClose={() => setIsAddExtraOpen(false)}
+        onSelectExercise={handleAddExtraExercise}
+        existingExerciseIds={dayData?.tasks.map((t) => t.exercise_id)}
+      />
     </div>
   );
 };
 
-// Custom Tooltip dla wykresu ćwiczeń w Dark Mode
-function CustomChartTooltip({ active, payload }: any) {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload;
-    return (
-      <div className="rounded-none bg-black p-2.5 border-2 border-zinc-700 text-xs shadow-2xl">
-        <div className="font-semibold text-white mb-0.5">{data.date}</div>
-        <div className="text-red-500 font-bold">
-          Ciężar: {data.weight} kg
-        </div>
-        {data.reps && (
-          <div className="text-zinc-400 text-[11px]">
-            Seria: {data.weight} kg × {data.reps} (RIR {data.rir})
-          </div>
-        )}
-      </div>
-    );
-  }
-  return null;
+// --- Komponent ćwiczenia (UKRYTY 1RM, TYLKO WAGA, POWTÓRZENIA, RIR I CHECKBOX) ---
+interface ExerciseSessionCardProps {
+  task: FullTaskDetails;
+  index: number;
+  priorPR?: ExerciseHistoricalPR | null;
+  onDeleteExercise: () => void;
 }
 
-// Custom Tooltip dla wykresu 1RM w Dark Mode
-function CustomMaxTooltip({ active, payload }: any) {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload;
-    return (
-      <div className="rounded-none bg-black p-2.5 border-2 border-zinc-700 text-xs shadow-2xl">
-        <div className="font-semibold text-white mb-0.5">{data.date}</div>
-        <div className="text-red-500 font-bold text-sm">
-          1RM: {data.oneRepMax} kg
+const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
+  task,
+  index,
+  priorPR,
+  onDeleteExercise,
+}) => {
+  const [isExpanded, setIsExpanded] = useState<boolean>(true);
+  const [weightInput, setWeightInput] = useState<string>('60');
+  const [repsInput, setRepsInput] = useState<string>('8');
+  const [rirInput, setRirInput] = useState<number>(2);
+
+  // Stan chwilowego, nieinwazyjnego powiadomienia o nowym PR pod ćwiczeniem
+  const [prCelebration, setPrCelebration] = useState<{
+    weight: number;
+    reps: number;
+    estimated1RM: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (prCelebration) {
+      const timer = setTimeout(() => {
+        setPrCelebration(null);
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [prCelebration]);
+
+  // Edycja pojedynczej serii
+  const [editingSetId, setEditingSetId] = useState<number | null>(null);
+  const [editWeight, setEditWeight] = useState<string>('');
+  const [editReps, setEditReps] = useState<string>('');
+  const [editRir, setEditRir] = useState<number>(2);
+
+  const handleStartEditSet = (set: LoggedSet) => {
+    setEditingSetId(set.id ?? null);
+    setEditWeight(String(set.weight));
+    setEditReps(String(set.reps));
+    setEditRir(set.rir);
+  };
+
+  const handleSaveEditSet = async (setId: number) => {
+    const w = parseFloat(editWeight);
+    const r = parseInt(editReps, 10);
+    if (isNaN(w) || isNaN(r) || w < 0 || r <= 0) return;
+    await updateLoggedSet(setId, { weight: w, reps: r, rir: editRir });
+    setEditingSetId(null);
+  };
+
+  // Prefill next set with values from previous set if available
+  const lastSet = task.sets[task.sets.length - 1];
+  const lastSetId = lastSet?.id;
+
+  useEffect(() => {
+    if (lastSet) {
+      setWeightInput(String(lastSet.weight));
+      setRepsInput(String(lastSet.reps));
+      setRirInput(lastSet.rir);
+    }
+  }, [lastSetId]);
+
+  const parsedWeight = parseFloat(weightInput) || 0;
+  const parsedReps = parseInt(repsInput, 10) || 0;
+
+  const targetSets = task.target_sets || 0;
+  const loggedSetsCount = task.sets.length;
+  const remainingSets = Math.max(0, targetSets - loggedSetsCount);
+
+  // Dotychczasowy rekord dla tego ćwiczenia (z historii oraz wcześniejszych serii w tej sesji)
+  const currentMaxSession = React.useMemo(() => {
+    let maxWeight = priorPR?.maxWeight ?? 0;
+    let max1RM = priorPR?.max1RM ?? 0;
+    for (const s of task.sets) {
+      if (s.weight > maxWeight) maxWeight = s.weight;
+      const est = calculateEpley1RM(s.weight, s.reps);
+      if (est > max1RM) max1RM = est;
+    }
+    return { maxWeight, max1RM };
+  }, [task.sets, priorPR]);
+
+  // Wyznacz serie, które były rekordem w momencie ich wykonania
+  const setPRMap = React.useMemo(() => {
+    const isPR = new Set<number>();
+    let maxW = priorPR?.maxWeight ?? 0;
+    let max1RM = priorPR?.max1RM ?? 0;
+
+    for (const s of task.sets) {
+      if (!s.id || s.weight <= 0) continue;
+      const est = calculateEpley1RM(s.weight, s.reps);
+      const isRecord =
+        (priorPR?.maxWeight === 0 && priorPR?.max1RM === 0 && maxW === 0 && max1RM === 0) ||
+        s.weight > maxW ||
+        est > max1RM;
+
+      if (isRecord) {
+        isPR.add(s.id);
+        if (s.weight > maxW) maxW = s.weight;
+        if (est > max1RM) max1RM = est;
+      }
+    }
+    return isPR;
+  }, [task.sets, priorPR]);
+
+  const typingEst1RM = parsedWeight > 0 && parsedReps > 0 ? calculateEpley1RM(parsedWeight, parsedReps) : 0;
+  const isTypingPR =
+    parsedWeight > 0 &&
+    parsedReps > 0 &&
+    (currentMaxSession.maxWeight > 0 || currentMaxSession.max1RM > 0) &&
+    (parsedWeight > currentMaxSession.maxWeight || typingEst1RM > currentMaxSession.max1RM);
+
+  const handleAddSet = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!task.id) return;
+    if (parsedWeight < 0 || parsedReps <= 0) return;
+
+    const willBePR =
+      (currentMaxSession.maxWeight > 0 || currentMaxSession.max1RM > 0) &&
+      (parsedWeight > currentMaxSession.maxWeight || typingEst1RM > currentMaxSession.max1RM);
+
+    await addLoggedSet(task.id, parsedWeight, parsedReps, rirInput);
+
+    if (willBePR) {
+      setPrCelebration({
+        weight: parsedWeight,
+        reps: parsedReps,
+        estimated1RM: typingEst1RM,
+      });
+    }
+  };
+
+  const handleCopyLastSet = async () => {
+    if (!task.id || task.sets.length === 0) return;
+    const last = task.sets[task.sets.length - 1];
+    setWeightInput(String(last.weight));
+    setRepsInput(String(last.reps));
+    setRirInput(last.rir);
+    await addLoggedSet(task.id, last.weight, last.reps, last.rir);
+    setIsExpanded(true);
+  };
+
+  const handleDeleteSet = async (setId?: number) => {
+    if (!setId) return;
+    await deleteLoggedSet(setId);
+  };
+
+  const CategoryIcon = getCategoryIcon(task.exercise?.muscle_group);
+
+  return (
+    <div className={`rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 shadow-lg shadow-black/50 ${isExpanded ? 'space-y-3' : ''}`}>
+      {/* Nagłówek ćwiczenia z licznikiem serii - klikalny do zwijania / rozwijania */}
+      <div
+        onClick={() => setIsExpanded(!isExpanded)}
+        className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 cursor-pointer select-none transition-colors group ${
+          isExpanded ? 'pb-3 border-b-2 border-zinc-800' : 'pb-0'
+        }`}
+      >
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-none bg-black border border-zinc-800 shrink-0 overflow-hidden">
+            <CategoryIcon className="w-6 h-6 object-contain opacity-85" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold text-zinc-500">
+                #{index + 1}
+              </span>
+              <h4 className="text-sm font-bold text-white tracking-wide uppercase group-hover:text-red-400 transition-colors">
+                {task.exercise?.name ?? 'Ćwiczenie'}
+              </h4>
+            </div>
+
+            {/* Dotychczasowy rekord ćwiczenia */}
+            {priorPR && priorPR.maxWeight > 0 ? (
+              <div className="mt-1 flex items-center gap-1 text-[10px] text-zinc-400 font-sans">
+                <span>Dotychczasowy rekord:</span>
+                <span className="font-bold text-zinc-200">{priorPR.maxWeight} kg</span>
+                {priorPR.max1RM > 0 && (
+                  <span className="text-zinc-500 font-normal">({priorPR.max1RM} kg 1RM)</span>
+                )}
+              </div>
+            ) : null}
+
+            {/* Licznik serii - jednolity rozmiar, kolor i czcionka */}
+            <div className="mt-1 flex items-center gap-2">
+              {!task.is_extra ? (
+                remainingSets > 0 ? (
+                  <span className="inline-flex items-center rounded-none bg-black border border-zinc-800 px-2 py-0.5 text-xs text-zinc-300 font-sans">
+                    Pozostało: {remainingSets} z {targetSets} serii
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-none bg-red-950 border border-red-700 px-2 py-0.5 text-xs font-bold text-red-300 font-sans">
+                    <Check className="h-3 w-3 stroke-[2.5]" />
+                    Ukończono ({targetSets}/{targetSets} serii)
+                  </span>
+                )
+              ) : null}
+              {task.sets.length > 0 ? (
+                <span className="inline-flex items-center rounded-none bg-black border border-zinc-800 px-2 py-0.5 text-xs text-zinc-300 font-sans">
+                  Wykonano: {task.sets.length} {getSetsWord(task.sets.length)}
+                </span>
+              ) : task.is_extra ? (
+                <span className="inline-flex items-center rounded-none bg-black border border-zinc-800 px-2 py-0.5 text-xs text-zinc-400 font-sans">
+                  0 wykonanych serii
+                </span>
+              ) : null}
+            </div>
+          </div>
         </div>
-        <div className="text-zinc-400 text-[11px] mt-0.5">
-          Źródło: {data.source}
+
+        {/* Akcje ćwiczenia: POZA PLANEM / Kopiuj serię / Usuń ćwiczenie / Zwiń-Rozwiń */}
+        <div className="flex items-center gap-2 self-end sm:self-auto" onClick={(e) => e.stopPropagation()}>
+          {task.is_extra && (
+            <span className="flex items-center justify-center h-7 px-2.5 rounded-none bg-red-950/80 border border-red-800 text-[10px] font-bold text-red-300 uppercase tracking-wider">
+              POZA PLANEM
+            </span>
+          )}
+          {task.sets.length > 0 && (
+            <button
+              type="button"
+              onClick={handleCopyLastSet}
+              className="flex items-center gap-1 h-7 rounded-none bg-black border border-zinc-800 px-2.5 text-xs font-bold text-zinc-300 hover:bg-zinc-900 hover:text-white transition-colors cursor-pointer"
+              title="Powtórz parametry ostatniej serii"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              <span>Powtórz</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onDeleteExercise}
+            className="flex items-center gap-1 h-7 rounded-none border border-zinc-800 bg-black px-2.5 text-xs font-bold text-zinc-400 hover:border-red-900 hover:text-rose-400 transition-colors cursor-pointer"
+            title="Usuń to ćwiczenie z tego dnia treningowego"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span>Usuń</span>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsExpanded(!isExpanded);
+            }}
+            className="flex items-center justify-center h-7 w-7 rounded-none border border-zinc-800 bg-black text-zinc-400 hover:text-white hover:border-zinc-700 transition-colors cursor-pointer"
+            title={isExpanded ? 'Zwiń ćwiczenie' : 'Rozwiń ćwiczenie'}
+          >
+            <ChevronDown
+              className={`h-4 w-4 transition-transform duration-200 ${
+                isExpanded ? 'transform rotate-180 text-red-500' : ''
+              }`}
+            />
+          </button>
         </div>
-        {data.details && (
-          <div className="text-zinc-500 text-[10px] mt-0.5">
-            {data.details}
+      </div>
+
+      {/* Rozwijana zawartość ćwiczenia: lista serii oraz formularz nowej serii */}
+      {isExpanded && (
+        <div className="space-y-3 animate-in fade-in duration-150">
+          {/* Chwilowe, animowane powiadomienie o nowym PR po zapisaniu serii */}
+          {prCelebration && (
+            <div className="flex items-center gap-2 p-2.5 bg-gradient-to-r from-red-950/80 via-zinc-950 to-black border border-red-700/80 text-xs font-bold text-red-400 animate-in fade-in slide-in-from-top-1 duration-200 font-sans shadow-md">
+              <Flame className="h-4 w-4 fill-red-600 text-red-600 shrink-0 animate-pulse" />
+              <span>
+                Nowy PR! {prCelebration.weight} kg × {prCelebration.reps} powt.
+                {prCelebration.estimated1RM > 0 && (
+                  <span className="text-zinc-300 font-normal ml-1">
+                    (szac. 1RM: {prCelebration.estimated1RM} kg)
+                  </span>
+                )}
+              </span>
+            </div>
+          )}
+
+          {/* Tabela zarejestrowanych serii (CZYSTY INTERFEJS: TYLKO WAGA, POWTÓRZENIA, RIR I CHECKBOX) */}
+          {task.sets.length > 0 && (
+            <div className="mt-3 divide-y-2 divide-zinc-900 text-xs">
+          {task.sets.map((set, setIdx) => {
+            const isSetPR = set.id ? setPRMap.has(set.id) : false;
+
+            if (editingSetId === set.id) {
+              return (
+                <div
+                  key={set.id}
+                  className="flex flex-wrap items-center justify-between py-2 px-2 bg-black border border-red-700/80 rounded-none gap-2 my-1 animate-in fade-in duration-100"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-sans text-[11px] font-bold text-red-500 w-4">
+                      #{setIdx + 1}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        value={editWeight}
+                        onChange={(e) => setEditWeight(e.target.value)}
+                        className="w-16 rounded-none bg-black border border-zinc-700 px-1.5 py-0.5 text-xs text-white focus:border-red-600 focus:outline-none"
+                      />
+                      <span className="text-[10px] text-zinc-400">kg</span>
+                    </div>
+                    <span className="text-zinc-600">×</span>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min="1"
+                        value={editReps}
+                        onChange={(e) => setEditReps(e.target.value)}
+                        className="w-12 rounded-none bg-black border border-zinc-700 px-1.5 py-0.5 text-xs text-white focus:border-red-600 focus:outline-none"
+                      />
+                      <span className="text-[10px] text-zinc-400">powt.</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <select
+                        value={editRir}
+                        onChange={(e) => setEditRir(Number(e.target.value))}
+                        className="rounded-none bg-black border border-zinc-700 px-1 py-0.5 text-xs text-white focus:border-red-600 focus:outline-none"
+                      >
+                        <option value={0}>RIR 0</option>
+                        <option value={1}>RIR 1</option>
+                        <option value={2}>RIR 2</option>
+                        <option value={3}>RIR 3</option>
+                        <option value={4}>RIR 4</option>
+                        <option value={5}>RIR 5</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 ml-auto">
+                    <button
+                      type="button"
+                      onClick={() => handleSaveEditSet(set.id!)}
+                      className="rounded-none bg-red-700 hover:bg-red-600 p-1 text-white cursor-pointer"
+                      title="Zapisz"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingSetId(null)}
+                      className="rounded-none bg-black border border-zinc-800 p-1 text-zinc-400 hover:text-white cursor-pointer"
+                      title="Anuluj"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div
+                key={set.id}
+                className="flex items-center justify-between py-2 px-1 hover:bg-zinc-900/60 rounded-none transition-colors"
+              >
+                <div className="flex items-center gap-2 sm:gap-3">
+                  {/* Checkbox odhaczonej serii */}
+                  <div className="flex h-5 w-5 items-center justify-center rounded-none bg-red-950 border border-red-800 text-red-400">
+                    <Check className="h-3.5 w-3.5 stroke-[2.5]" />
+                  </div>
+                  <span className="font-sans text-[11px] font-bold text-zinc-500 w-4">
+                    #{setIdx + 1}
+                  </span>
+                  <span className="font-bold text-white font-sans">{set.weight} kg</span>
+                  <span className="text-zinc-400 font-sans">× {set.reps}</span>
+                  {isSetPR && (
+                    <span className="inline-flex items-center gap-1 rounded-none bg-red-950/80 border border-red-700/80 px-1.5 py-0.5 text-[10px] font-bold text-red-400 font-sans">
+                      <Flame className="h-3 w-3 fill-red-600 text-red-600 shrink-0" />
+                      <span>PR</span>
+                    </span>
+                  )}
+                  <span className="font-sans">
+                    <RirPill rir={set.rir} />
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleStartEditSet(set)}
+                    className="text-zinc-500 hover:text-zinc-200 transition-colors p-1 cursor-pointer rounded-none"
+                    title="Edytuj serię"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSet(set.id)}
+                    className="text-zinc-500 hover:text-rose-400 transition-colors p-1 cursor-pointer rounded-none"
+                    title="Usuń serię"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Formularz wprowadzania nowej serii (Ciężar, Powtórzenia, RIR) */}
+      <form
+        onSubmit={handleAddSet}
+        className="mt-3 rounded-none bg-gradient-to-b from-zinc-950 to-black p-3.5 border-2 border-zinc-800 space-y-2.5"
+      >
+        <div className="grid grid-cols-3 gap-2">
+          {/* Ciężar */}
+          <div>
+            <label className="block text-[10px] font-bold text-zinc-300 uppercase tracking-wider">
+              Ciężar (kg)
+            </label>
+            <input
+              type="number"
+              step="0.5"
+              min="0"
+              value={weightInput}
+              onChange={(e) => setWeightInput(e.target.value)}
+              className="mt-1 w-full rounded-none border border-zinc-700 bg-black px-2.5 py-1.5 text-xs font-medium text-white focus:border-red-600 focus:outline-none"
+            />
+          </div>
+
+          {/* Powtórzenia */}
+          <div>
+            <label className="block text-[10px] font-bold text-zinc-300 uppercase tracking-wider">
+              Powtórzenia
+            </label>
+            <input
+              type="number"
+              min="1"
+              value={repsInput}
+              onChange={(e) => setRepsInput(e.target.value)}
+              className="mt-1 w-full rounded-none border border-zinc-700 bg-black px-2.5 py-1.5 text-xs font-medium text-white focus:border-red-600 focus:outline-none"
+            />
+          </div>
+
+          {/* RIR (0-5) */}
+          <div>
+            <label className="block text-[10px] font-bold text-zinc-300 uppercase tracking-wider">
+              RIR (0-5)
+            </label>
+            <select
+              value={rirInput}
+              onChange={(e) => setRirInput(Number(e.target.value))}
+              className="mt-1 w-full rounded-none border border-zinc-700 bg-black px-2 py-1.5 text-xs font-medium text-white focus:border-red-600 focus:outline-none"
+            >
+              <option value={0}>0 (Upadek)</option>
+              <option value={1}>1 (Zapas 1)</option>
+              <option value={2}>2 (Zapas 2)</option>
+              <option value={3}>3 (Zapas 3)</option>
+              <option value={4}>4 (Zapas 4)</option>
+              <option value={5}>5 (Rozgrzewka)</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Wykrywanie nowego rekordu w czasie rzeczywistym podczas wpisywania */}
+        {isTypingPR && (
+          <div className="flex items-center gap-2 p-2 bg-red-950/60 border border-red-700/80 animate-in fade-in duration-150">
+            <Flame className="h-4 w-4 fill-red-600 text-red-600 shrink-0 animate-pulse" />
+            <div className="text-xs font-bold text-red-400 font-sans tracking-wide">
+              <span>Nowy PR! {parsedWeight} kg × {parsedReps} powt.</span>
+              {typingEst1RM > 0 && (
+                <span className="text-zinc-300 font-normal ml-1">
+                  (szac. 1RM: {typingEst1RM} kg)
+                </span>
+              )}
+              {currentMaxSession.maxWeight > 0 && (
+                <span className="text-zinc-400 font-normal text-[10px] ml-1.5">
+                  Dotychczasowy: {currentMaxSession.maxWeight} kg
+                </span>
+              )}
+            </div>
           </div>
         )}
-      </div>
-    );
-  }
-  return null;
-}
 
-// Custom Tooltip dla wagi ciała w Dark Mode
-function CustomWeightTooltip({ active, payload }: any) {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload;
+        {/* Przycisk Zapisz serię */}
+        <div className="flex items-center justify-end pt-1">
+          <button
+            type="submit"
+            style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
+            className="rounded-none bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider px-4 py-1.5 text-xs transition-colors cursor-pointer"
+          >
+            + Dodaj serię
+          </button>
+        </div>
+      </form>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const RirPill: React.FC<{ rir: number }> = ({ rir }) => {
+  if (rir === 0) {
     return (
-      <div className="rounded-none bg-black p-2.5 border-2 border-zinc-700 text-xs shadow-2xl">
-        <div className="text-zinc-400 text-[11px]">{data.fullDate}</div>
-        <div className="font-bold text-red-500 mt-0.5">{data.weight} kg</div>
-      </div>
+      <span className="rounded-none bg-rose-950 border border-rose-600 text-rose-300 px-1.5 py-0.5 text-[9px] font-bold">
+        RIR 0
+      </span>
     );
   }
-  return null;
-}
+  if (rir <= 2) {
+    return (
+      <span className="rounded-none bg-amber-950 border border-amber-600 text-amber-300 px-1.5 py-0.5 text-[9px] font-bold">
+        RIR {rir}
+      </span>
+    );
+  }
+  return (
+    <span className="rounded-none bg-black border border-zinc-700 text-zinc-400 px-1.5 py-0.5 text-[9px] font-medium">
+      RIR {rir}
+    </span>
+  );
+};
