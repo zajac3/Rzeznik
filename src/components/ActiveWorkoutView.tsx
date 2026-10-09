@@ -11,6 +11,7 @@ import {
   Flame,
   Droplet,
   ChevronDown,
+  FileText,
 } from 'lucide-react';
 import {
   db,
@@ -26,6 +27,7 @@ import {
   deleteWorkoutSessionByDate,
   findLastWorkoutSessionOfType,
   copyPreviousWorkoutSession,
+  saveWorkoutDayNotesByDate,
   getHistoricalPRs,
   isSetNewPR,
   calculateEpley1RM,
@@ -64,6 +66,9 @@ export const ActiveWorkoutView: React.FC = () => {
   const [isConfirmCopyPrevious, setIsConfirmCopyPrevious] = useState(false);
   const [copyFeedbackMsg, setCopyFeedbackMsg] = useState<string | null>(null);
   const [copyErrorMsg, setCopyErrorMsg] = useState<string | null>(null);
+  const [notesInput, setNotesInput] = useState<string>('');
+  const [isNotesSaved, setIsNotesSaved] = useState<boolean>(false);
+  const [isNotesExpanded, setIsNotesExpanded] = useState<boolean>(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -143,6 +148,26 @@ export const ActiveWorkoutView: React.FC = () => {
     },
     [selectedDate]
   );
+
+  // Synchronizacja pola notatki z bazą danych
+  useEffect(() => {
+    const existingNotes = dayData?.notes || '';
+    setNotesInput(existingNotes);
+    setIsNotesSaved(false);
+    if (existingNotes.trim().length > 0) {
+      setIsNotesExpanded(true);
+    }
+  }, [dayData?.notes, selectedDate]);
+
+  const handleSaveNotes = async () => {
+    try {
+      await saveWorkoutDayNotesByDate(selectedDate, notesInput);
+      setIsNotesSaved(true);
+      setTimeout(() => setIsNotesSaved(false), 2500);
+    } catch (err) {
+      console.error('Błąd zapisu notatki:', err);
+    }
+  };
 
   // Szukanie ostatniej zakończonej sesji tego samego rodzaju w historii
   const previousSessionSummary = useLiveQuery(async () => {
@@ -577,6 +602,78 @@ export const ActiveWorkoutView: React.FC = () => {
         )}
       </div>
 
+      {/* 2b. NOTATKI DO TRENINGU */}
+      <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-3.5 sm:p-4 border-2 border-zinc-700/80 shadow-lg shadow-black/50 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setIsNotesExpanded((prev) => !prev)}
+            className="flex items-center gap-2 text-left cursor-pointer group"
+          >
+            <FileText className="h-4 w-4 text-red-500 shrink-0" />
+            <h3 className="text-xs font-bold uppercase tracking-wider text-white font-sans group-hover:text-red-400 transition-colors">
+              Notatki do treningu
+            </h3>
+            {dayData?.notes && dayData.notes.trim().length > 0 && !isNotesExpanded && (
+              <span className="text-[10px] text-zinc-400 font-sans truncate max-w-[140px] sm:max-w-xs">
+                — {dayData.notes.replace(/\n/g, ' ')}
+              </span>
+            )}
+          </button>
+
+          <div className="flex items-center gap-2">
+            {isNotesSaved && (
+              <span className="text-[10px] font-bold text-emerald-400 font-sans animate-in fade-in">
+                Zapisano ✓
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsNotesExpanded((prev) => !prev)}
+              className="flex items-center justify-center h-6 w-6 rounded-none bg-black border border-zinc-800 text-zinc-400 hover:text-white cursor-pointer"
+              title={isNotesExpanded ? 'Zwiń notatki' : 'Rozwiń notatki'}
+            >
+              <ChevronDown
+                className={`h-3.5 w-3.5 transition-transform duration-200 ${
+                  isNotesExpanded ? 'transform rotate-180 text-red-500' : ''
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
+        {isNotesExpanded && (
+          <div className="space-y-2 pt-1 animate-in fade-in duration-150">
+            <textarea
+              value={notesInput}
+              onChange={(e) => {
+                setNotesInput(e.target.value);
+                setIsNotesSaved(false);
+              }}
+              onBlur={handleSaveNotes}
+              placeholder="Wpisz uwagi, samopoczucie, ciężary lub wskazówki techniczne do tego treningu..."
+              rows={3}
+              className="w-full rounded-none border border-zinc-700 bg-black/90 p-2.5 text-xs text-white placeholder-zinc-500 focus:border-red-600 focus:outline-none font-sans resize-none transition-colors"
+            />
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-zinc-500 font-sans">
+                {notesInput.trim().length > 0
+                  ? `${notesInput.trim().length} znaków`
+                  : 'Brak notatek'}
+              </span>
+              <button
+                type="button"
+                onClick={handleSaveNotes}
+                style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
+                className="rounded-none bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-white cursor-pointer transition-colors shadow-none"
+              >
+                Zapisz notatkę
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* 3. LISTA ĆWICZEŃ */}
       <div className="space-y-3">
         {hasExercises &&
@@ -668,6 +765,17 @@ export const ActiveWorkoutView: React.FC = () => {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {dayData.notes && dayData.notes.trim().length > 0 && (
+              <div className="mt-3 pt-3 border-t-2 border-zinc-800 space-y-1 text-left">
+                <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider block font-sans">
+                  Notatka z treningu:
+                </span>
+                <p className="text-xs text-zinc-300 font-sans whitespace-pre-wrap bg-black/60 border border-zinc-800 p-2.5">
+                  {dayData.notes}
+                </p>
               </div>
             )}
           </div>
@@ -1101,25 +1209,23 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
                 key={set.id}
                 className="flex items-center justify-between py-2 px-1 hover:bg-zinc-900/60 rounded-none transition-colors"
               >
-                <div className="flex items-center gap-2 sm:gap-3">
+                <div className="flex items-center gap-2 sm:gap-2.5">
                   {/* Checkbox odhaczonej serii */}
-                  <div className="flex h-5 w-5 items-center justify-center rounded-none bg-red-950 border border-red-800 text-red-400">
+                  <div className="flex h-5 w-5 items-center justify-center rounded-none bg-red-950 border border-red-800 text-red-400 shrink-0">
                     <Check className="h-3.5 w-3.5 stroke-[2.5]" />
                   </div>
-                  <span className="font-sans text-[11px] font-bold text-zinc-500 w-4">
+                  <span className="font-sans text-[11px] font-bold text-zinc-500 w-4 shrink-0">
                     #{setIdx + 1}
                   </span>
-                  <span className="font-bold text-white font-sans">{set.weight} kg</span>
-                  <span className="text-zinc-400 font-sans">× {set.reps}</span>
+                  <span className="font-bold text-white font-sans shrink-0">{set.weight} kg</span>
+                  <span className="text-zinc-400 font-sans shrink-0">× {set.reps}</span>
                   {isSetPR && (
-                    <span className="inline-flex items-center gap-1 rounded-none bg-red-950/80 border border-red-700/80 px-1.5 py-0.5 text-[10px] font-bold text-red-400 font-sans">
-                      <Flame className="h-3 w-3 fill-red-600 text-red-600 shrink-0" />
+                    <span className="inline-flex h-5 items-center justify-center gap-1 rounded-none bg-red-950/80 border border-red-700/80 px-1.5 text-[10px] font-bold text-red-400 font-sans leading-none shrink-0">
+                      <Flame className="h-2.5 w-2.5 fill-red-600 text-red-600 shrink-0" />
                       <span>PR</span>
                     </span>
                   )}
-                  <span className="font-sans">
-                    <RirPill rir={set.rir} />
-                  </span>
+                  <RirPill rir={set.rir} />
                 </div>
 
                 <div className="flex items-center gap-1">
@@ -1241,20 +1347,20 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
 const RirPill: React.FC<{ rir: number }> = ({ rir }) => {
   if (rir === 0) {
     return (
-      <span className="rounded-none bg-rose-950 border border-rose-600 text-rose-300 px-1.5 py-0.5 text-[9px] font-bold">
+      <span className="inline-flex h-5 items-center justify-center rounded-none bg-rose-950/80 border border-rose-600 text-rose-300 px-1.5 text-[10px] font-bold font-sans leading-none shrink-0">
         RIR 0
       </span>
     );
   }
   if (rir <= 2) {
     return (
-      <span className="rounded-none bg-amber-950 border border-amber-600 text-amber-300 px-1.5 py-0.5 text-[9px] font-bold">
+      <span className="inline-flex h-5 items-center justify-center rounded-none bg-amber-950/80 border border-amber-600 text-amber-300 px-1.5 text-[10px] font-bold font-sans leading-none shrink-0">
         RIR {rir}
       </span>
     );
   }
   return (
-    <span className="rounded-none bg-black border border-zinc-700 text-zinc-400 px-1.5 py-0.5 text-[9px] font-medium">
+    <span className="inline-flex h-5 items-center justify-center rounded-none bg-black border border-zinc-700 text-zinc-300 px-1.5 text-[10px] font-bold font-sans leading-none shrink-0">
       RIR {rir}
     </span>
   );
