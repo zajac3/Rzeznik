@@ -623,6 +623,11 @@ export async function updateWorkoutDayNotes(dayId: number, notes: string): Promi
   await db.workoutDays.update(dayId, { notes });
 }
 
+export async function saveWorkoutDayNotesByDate(date: string, notes: string): Promise<void> {
+  const day = await getOrCreateWorkoutDay(date);
+  await db.workoutDays.update(day.id!, { notes });
+}
+
 export async function deleteWorkoutDay(dayId: number): Promise<void> {
   await deleteWorkoutSessionById(dayId);
 }
