@@ -1012,7 +1012,7 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
     let max1RM = priorPR?.max1RM ?? 0;
 
     for (const s of task.sets) {
-      if (!s.id || s.weight <= 0) continue;
+      if (!s.id || s.weight <= 0 || s.exclude_from_1rm) continue;
       const est = calculateEpley1RM(s.weight, s.reps);
       const isRecord =
         (priorPR?.maxWeight === 0 && priorPR?.max1RM === 0 && maxW === 0 && max1RM === 0) ||
