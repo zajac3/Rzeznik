@@ -105,6 +105,7 @@ export const StatsView: React.FC = () => {
     if (workoutData) {
       const { sets, taskMap, dayMap } = workoutData;
       const relevantSets = sets.filter((s) => {
+        if (s.exclude_from_1rm) return false;
         const task = taskMap.get(s.task_id);
         return task && task.exercise_id === effectiveMaxExerciseId;
       });
@@ -171,6 +172,7 @@ export const StatsView: React.FC = () => {
       if (workoutData) {
         const { sets, taskMap, dayMap } = workoutData;
         const relevantSets = sets.filter((s) => {
+          if (s.exclude_from_1rm) return false;
           const task = taskMap.get(s.task_id);
           return task && task.exercise_id === ex.id;
         });
@@ -317,11 +319,8 @@ export const StatsView: React.FC = () => {
     recordId: number | null;
     recordType: 'manual' | 'set' | null;
   }) => {
-    if (item.recordType === 'manual' && item.recordId) {
-      await deleteManual1RM(item.recordId);
-    } else if (item.recordType === 'set' && item.recordId) {
-      await delete1RMRecord('set', item.recordId);
-    } else if (item.exercise.id) {
+    if (item.exercise.id) {
+      // Usuń rekord 1RM dla tego ćwiczenia za jednym zamachem (BEZ usuwania serii z treningu!)
       await deleteExercise1RMRecords(item.exercise.id);
     }
     setConfirmDeleteExerciseId(null);
