@@ -297,7 +297,7 @@ export const StatsView: React.FC = () => {
     await addManual1RM(effectiveManualExerciseId, val, manualDate);
     const exName = compoundExercises.find((e) => e.id === effectiveManualExerciseId)?.name || 'ćwiczenia';
     const existingBest = maxesSummaryList.find((m) => m.exercise.id === effectiveManualExerciseId)?.best1RM ?? 0;
-    const isNewPR = val > existingBest;
+    const isNewPR = existingBest > 0 && val > existingBest;
 
     if (isNewPR) {
       setManualSuccessMsg(`Nowy PR! Zapisano 1RM ${val} kg dla "${exName}"!`);
@@ -800,20 +800,14 @@ export const StatsView: React.FC = () => {
               </div>
 
               {/* Wykrywanie nowego rekordu w czasie rzeczywistym */}
-              {isManualTypingPR && (
+              {isManualTypingPR && currentSelectedManualMaxItem?.best1RM && (
                 <div className="sm:col-span-4 flex items-center gap-2 p-2.5 bg-red-950/60 border border-red-700/80 animate-in fade-in duration-150">
                   <Flame className="h-4 w-4 fill-red-600 text-red-600 shrink-0 animate-pulse" />
                   <span className="text-xs font-bold text-red-400 font-sans tracking-wide">
                     Nowy PR!
-                    {currentSelectedManualMaxItem?.best1RM ? (
-                      <span className="text-zinc-300 ml-1.5 font-normal">
-                        Dotychczasowy rekord dla tego boju: {currentSelectedManualMaxItem.best1RM} kg
-                      </span>
-                    ) : (
-                      <span className="text-zinc-300 ml-1.5 font-normal">
-                        Ustanowienie pierwszego rekordu
-                      </span>
-                    )}
+                    <span className="text-zinc-300 ml-1.5 font-normal">
+                      Dotychczasowy rekord dla tego boju: {currentSelectedManualMaxItem.best1RM} kg
+                    </span>
                   </span>
                 </div>
               )}
@@ -863,12 +857,6 @@ export const StatsView: React.FC = () => {
                       <div className="text-right">
                         {hasData ? (
                           <div className="flex items-center gap-2 justify-end">
-                            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-red-950/70 border border-red-700/80">
-                              <Flame className="h-3.5 w-3.5 fill-red-600 text-red-600 shrink-0" />
-                              <span className="text-[10px] font-bold text-red-400 font-sans tracking-wider uppercase">
-                                PR
-                              </span>
-                            </div>
                             <div className="flex items-baseline gap-1 justify-end">
                               <span className="text-lg font-bold text-red-500 font-sans">
                                 {item.best1RM}
