@@ -52,11 +52,11 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
   const [editingDayId, setEditingDayId] = useState<number | null>(null);
   const [editingDayName, setEditingDayName] = useState('');
 
-  // Zwinięte szablony dni treningowych
-  const [collapsedDayIds, setCollapsedDayIds] = useState<Set<number>>(new Set());
+  // Rozwinięte szablony dni treningowych (domyślnie wszystkie zwinięte)
+  const [expandedDayIds, setExpandedDayIds] = useState<Set<number>>(new Set());
 
   const toggleDayCollapse = (dayId: number) => {
-    setCollapsedDayIds((prev) => {
+    setExpandedDayIds((prev) => {
       const next = new Set(prev);
       if (next.has(dayId)) {
         next.delete(dayId);
@@ -355,7 +355,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
               .sort((a, b) => a.sort_order - b.sort_order);
 
             const isEditing = editingDayId === day.id;
-            const isExpanded = !collapsedDayIds.has(day.id!);
+            const isExpanded = expandedDayIds.has(day.id!);
 
             return (
               <div
