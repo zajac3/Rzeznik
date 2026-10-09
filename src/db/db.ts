@@ -36,6 +36,7 @@ export interface LoggedSet {
   reps: number;
   rir: number; // 0 - 5
   created_at: string; // ISO string
+  exclude_from_1rm?: boolean;
 }
 
 export interface BodyWeightEntry {
@@ -136,12 +137,27 @@ export async function delete1RMRecord(type: 'manual' | 'set', id: number): Promi
   if (type === 'manual') {
     await db.manual1RMs.delete(id);
   } else if (type === 'set') {
-    await db.loggedSets.delete(id);
+    // NIGDY nie usuwamy serii z treningu - oznaczamy ją jedynie jako wykluczoną z rekordów 1RM!
+    await db.loggedSets.update(id, { exclude_from_1rm: true });
   }
 }
 
 export async function deleteExercise1RMRecords(exerciseId: number): Promise<void> {
+  // 1. Usuń wpisy ręczne dla tego ćwiczenia
   await db.manual1RMs.where('exercise_id').equals(exerciseId).delete();
+
+  // 2. Znajdź wszystkie serie powiązane z tym ćwiczeniem i oznacz jako wykluczone z 1RM (BEZ usuwania serii z treningów!)
+  const tasks = await db.plannedTasks.where('exercise_id').equals(exerciseId).toArray();
+  const taskIds = new Set(tasks.map((t) => t.id).filter((id): id is number => typeof id === 'number'));
+
+  if (taskIds.size > 0) {
+    const sets = await db.loggedSets.filter((s) => taskIds.has(s.task_id)).toArray();
+    for (const s of sets) {
+      if (s.id && !s.exclude_from_1rm) {
+        await db.loggedSets.update(s.id, { exclude_from_1rm: true });
+      }
+    }
+  }
 }
 
 export interface ExerciseHistoricalPR {
@@ -184,6 +200,7 @@ export async function getHistoricalPRs(excludeDate?: string): Promise<Map<number
 
   // Przetwórz wykonane serie
   for (const s of allSets) {
+    if (s.exclude_from_1rm) continue;
     const task = taskMap.get(s.task_id);
     if (!task) continue;
     const day = dayMap.get(task.day_id);
