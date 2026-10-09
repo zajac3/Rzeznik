@@ -71,6 +71,8 @@ export const ActiveWorkoutView: React.FC = () => {
   const [isNotesExpanded, setIsNotesExpanded] = useState<boolean>(false);
   const [isConfirmDeleteNote, setIsConfirmDeleteNote] = useState<boolean>(false);
   const [deleteNotesFeedbackMsg, setDeleteNotesFeedbackMsg] = useState<string | null>(null);
+  const [expandedTaskIds, setExpandedTaskIds] = useState<Set<number>>(new Set());
+  const [expandAllTasksOnNextLoad, setExpandAllTasksOnNextLoad] = useState<boolean>(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -79,6 +81,8 @@ export const ActiveWorkoutView: React.FC = () => {
     setIsConfirmCopyPrevious(false);
     setIsConfirmDeleteNote(false);
     setIsNotesExpanded(false);
+    setExpandedTaskIds(new Set());
+    setExpandAllTasksOnNextLoad(false);
     setCopyFeedbackMsg(null);
     setCopyErrorMsg(null);
     setDeleteNotesFeedbackMsg(null);
@@ -183,6 +187,27 @@ export const ActiveWorkoutView: React.FC = () => {
     }
   };
 
+  // Automatyczne rozwijanie ćwiczeń po dodaniu planu treningowego lub skopiowaniu sesji
+  useEffect(() => {
+    if (expandAllTasksOnNextLoad && dayData?.tasks && dayData.tasks.length > 0) {
+      const allIds = new Set(dayData.tasks.map((t) => t.id!).filter(Boolean));
+      setExpandedTaskIds(allIds);
+      setExpandAllTasksOnNextLoad(false);
+    }
+  }, [expandAllTasksOnNextLoad, dayData?.tasks]);
+
+  const toggleTaskExpand = (taskId: number) => {
+    setExpandedTaskIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+      }
+      return next;
+    });
+  };
+
   // Szukanie ostatniej zakończonej sesji tego samego rodzaju w historii
   const previousSessionSummary = useLiveQuery(async () => {
     if (!dayData?.routine_day_id && (!dayData?.routine_day_name || dayData.routine_day_name.trim() === '')) {
@@ -205,6 +230,7 @@ export const ActiveWorkoutView: React.FC = () => {
     try {
       const res = await copyPreviousWorkoutSession(selectedDate, previousSessionSummary.dayId);
       setIsConfirmCopyPrevious(false);
+      setExpandAllTasksOnNextLoad(true);
       setCopyFeedbackMsg(
         `Skopiowano ${res.tasksCopied} ćwiczeń i ${res.setsCopied} serii z treningu (${previousSessionSummary.date})!`
       );
@@ -216,6 +242,7 @@ export const ActiveWorkoutView: React.FC = () => {
 
   const handleSelectPlan = async (routineDayId: number) => {
     await assignRoutineDayToDate(selectedDate, routineDayId);
+    setExpandAllTasksOnNextLoad(true);
     setIsSelectPlanModalOpen(false);
   };
 
@@ -230,7 +257,10 @@ export const ActiveWorkoutView: React.FC = () => {
       const newDay = await getOrCreateWorkoutDay(selectedDate, 'in_progress');
       dayId = newDay.id!;
     }
-    await addExtraExerciseToWorkoutDay(dayId, exerciseId, 0);
+    const newTaskId = await addExtraExerciseToWorkoutDay(dayId, exerciseId, 0);
+    if (newTaskId) {
+      setExpandedTaskIds((prev) => new Set(prev).add(newTaskId));
+    }
     setIsAddExtraOpen(false);
   };
 
@@ -752,6 +782,8 @@ export const ActiveWorkoutView: React.FC = () => {
               index={index}
               priorPR={task.exercise_id ? priorPRs.get(task.exercise_id) : undefined}
               onDeleteExercise={() => handleDeleteTask(task.id)}
+              isExpanded={task.id ? expandedTaskIds.has(task.id) : false}
+              onToggleExpand={() => task.id && toggleTaskExpand(task.id)}
             />
           ))}
 
@@ -924,6 +956,8 @@ interface ExerciseSessionCardProps {
   index: number;
   priorPR?: ExerciseHistoricalPR | null;
   onDeleteExercise: () => void;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
 }
 
 const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
@@ -931,8 +965,20 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
   index,
   priorPR,
   onDeleteExercise,
+  isExpanded: isExpandedProp,
+  onToggleExpand,
 }) => {
-  const [isExpanded, setIsExpanded] = useState<boolean>(false);
+  const [localExpanded, setLocalExpanded] = useState<boolean>(false);
+  const isExpanded = isExpandedProp !== undefined ? isExpandedProp : localExpanded;
+
+  const handleToggle = () => {
+    if (onToggleExpand) {
+      onToggleExpand();
+    } else {
+      setLocalExpanded((prev) => !prev);
+    }
+  };
+
   const [weightInput, setWeightInput] = useState<string>('60');
   const [repsInput, setRepsInput] = useState<string>('8');
   const [rirInput, setRirInput] = useState<number>(2);
@@ -1062,7 +1108,9 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
     setRepsInput(String(last.reps));
     setRirInput(last.rir);
     await addLoggedSet(task.id, last.weight, last.reps, last.rir);
-    setIsExpanded(true);
+    if (!isExpanded) {
+      handleToggle();
+    }
   };
 
   const handleDeleteSet = async (setId?: number) => {
@@ -1076,7 +1124,7 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
     <div className={`rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 shadow-lg shadow-black/50 ${isExpanded ? 'space-y-3' : ''}`}>
       {/* Nagłówek ćwiczenia z licznikiem serii - klikalny do zwijania / rozwijania */}
       <div
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={handleToggle}
         className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 cursor-pointer select-none transition-colors group ${
           isExpanded ? 'pb-3 border-b-2 border-zinc-800' : 'pb-0'
         }`}
@@ -1164,7 +1212,7 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              setIsExpanded(!isExpanded);
+              handleToggle();
             }}
             className="flex items-center justify-center h-7 w-7 rounded-none border border-zinc-800 bg-black text-zinc-400 hover:text-white hover:border-zinc-700 transition-colors cursor-pointer"
             title={isExpanded ? 'Zwiń ćwiczenie' : 'Rozwiń ćwiczenie'}
