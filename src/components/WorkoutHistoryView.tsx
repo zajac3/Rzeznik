@@ -343,7 +343,7 @@ export const WorkoutHistoryView: React.FC = () => {
                         <div className="space-y-1.5">
                           {task.sets.map((set, setIdx) => {
                             const pr = allTimePRs.get(task.exerciseId);
-                            const isPR = Boolean(set.id && pr && pr.bestSetId === set.id);
+                            const isPR = Boolean(set.id && !set.exclude_from_1rm && pr && pr.bestSetId === set.id);
 
                             return (
                               <div
