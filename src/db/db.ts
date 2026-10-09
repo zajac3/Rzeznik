@@ -602,7 +602,7 @@ export async function loadRoutineIntoWorkoutDay(dayId: number, routineDayId: num
 export async function addExtraExerciseToWorkoutDay(
   dayId: number,
   exerciseId: number,
-  targetSets: number = 3
+  targetSets: number = 0
 ): Promise<number> {
   const currentTasks = await db.plannedTasks.where('day_id').equals(dayId).toArray();
   const nextOrder = currentTasks.length > 0 ? Math.max(...currentTasks.map((t) => t.sort_order)) + 1 : 1;
@@ -610,7 +610,7 @@ export async function addExtraExerciseToWorkoutDay(
     day_id: dayId,
     exercise_id: exerciseId,
     sort_order: nextOrder,
-    target_sets: Math.max(1, targetSets),
+    target_sets: Math.max(0, targetSets),
     is_extra: true,
   });
 }
@@ -806,7 +806,7 @@ export async function getFullDayDetails(date: string): Promise<FullDayDetails | 
       sets: taskSets,
       totalTonnage: Math.round(taskTonnage * 10) / 10,
       estimated1RM: max1RM,
-      target_sets: task.target_sets || 3,
+      target_sets: task.is_extra ? (task.target_sets ?? 0) : (task.target_sets || 3),
       is_extra: task.is_extra || false,
     };
   });
