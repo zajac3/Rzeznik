@@ -27,20 +27,20 @@ function formatDisplayDate(isoString: string): string {
 const RirBadge: React.FC<{ rir: number }> = ({ rir }) => {
   if (rir === 0) {
     return (
-      <span className="rounded-none bg-rose-950 border border-rose-600 text-rose-300 px-2 py-0.5 text-[10px] font-bold">
+      <span className="inline-flex h-5 items-center justify-center rounded-none bg-rose-950/80 border border-rose-600 text-rose-300 px-1.5 text-[10px] font-bold font-sans leading-none shrink-0">
         RIR 0 (Upadek)
       </span>
     );
   }
   if (rir <= 2) {
     return (
-      <span className="rounded-none bg-amber-950 border border-amber-600 text-amber-300 px-2 py-0.5 text-[10px] font-bold">
+      <span className="inline-flex h-5 items-center justify-center rounded-none bg-amber-950/80 border border-amber-600 text-amber-300 px-1.5 text-[10px] font-bold font-sans leading-none shrink-0">
         RIR {rir}
       </span>
     );
   }
   return (
-    <span className="rounded-none bg-black border border-zinc-700 text-zinc-400 px-2 py-0.5 text-[10px] font-medium">
+    <span className="inline-flex h-5 items-center justify-center rounded-none bg-black border border-zinc-700 text-zinc-300 px-1.5 text-[10px] font-bold font-sans leading-none shrink-0">
       RIR {rir}
     </span>
   );
@@ -83,6 +83,7 @@ export const WorkoutHistoryView: React.FC = () => {
       id: number;
       date: string;
       routine_day_name?: string;
+      notes?: string;
       totalSets: number;
       totalTonnage: number;
       exercisesCount: number;
@@ -136,6 +137,7 @@ export const WorkoutHistoryView: React.FC = () => {
           id: day.id,
           date: day.date,
           routine_day_name: day.routine_day_name,
+          notes: day.notes,
           totalSets: dayTotalSets,
           totalTonnage: Math.round(dayTotalTonnage * 10) / 10,
           exercisesCount: enrichedTasks.length,
@@ -359,7 +361,7 @@ export const WorkoutHistoryView: React.FC = () => {
                                     × {set.reps} powt.
                                   </span>
                                   {isPR && (
-                                    <span className="inline-flex items-center gap-1 rounded-none bg-red-950/80 border border-red-700/80 px-1.5 py-0.5 text-[9px] font-bold text-red-400 font-sans">
+                                    <span className="inline-flex h-5 items-center justify-center gap-1 rounded-none bg-red-950/80 border border-red-700/80 px-1.5 text-[10px] font-bold text-red-400 font-sans leading-none shrink-0">
                                       <Flame className="h-2.5 w-2.5 fill-red-600 text-red-600 shrink-0" />
                                       PR
                                     </span>
@@ -376,6 +378,18 @@ export const WorkoutHistoryView: React.FC = () => {
                       </div>
                     ))}
                   </div>
+
+                  {/* Notatka z treningu */}
+                  {session.notes && session.notes.trim().length > 0 && (
+                    <div className="rounded-none bg-black/60 border border-zinc-800 p-3 space-y-1">
+                      <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider block font-sans">
+                        Notatka z treningu:
+                      </span>
+                      <p className="text-xs text-zinc-300 font-sans whitespace-pre-wrap">
+                        {session.notes}
+                      </p>
+                    </div>
+                  )}
 
                   {/* Akcja usunięcia treningu z historii */}
                   <div className="pt-3 border-t-2 border-zinc-800 flex items-center justify-between">
