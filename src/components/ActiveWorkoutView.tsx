@@ -69,14 +69,18 @@ export const ActiveWorkoutView: React.FC = () => {
   const [notesInput, setNotesInput] = useState<string>('');
   const [isNotesSaved, setIsNotesSaved] = useState<boolean>(false);
   const [isNotesExpanded, setIsNotesExpanded] = useState<boolean>(false);
+  const [isConfirmDeleteNote, setIsConfirmDeleteNote] = useState<boolean>(false);
+  const [deleteNotesFeedbackMsg, setDeleteNotesFeedbackMsg] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setIsConfirmDeleteSession(false);
     setIsConfirmCopyPrevious(false);
+    setIsConfirmDeleteNote(false);
     setCopyFeedbackMsg(null);
     setCopyErrorMsg(null);
+    setDeleteNotesFeedbackMsg(null);
   }, [selectedDate]);
 
   // Dni treningowe: 30 dni w przeszłość, dzień dzisiejszy w centrum i 30 dni w przyszłość
@@ -166,6 +170,18 @@ export const ActiveWorkoutView: React.FC = () => {
       setTimeout(() => setIsNotesSaved(false), 2500);
     } catch (err) {
       console.error('Błąd zapisu notatki:', err);
+    }
+  };
+
+  const handleDeleteNotes = async () => {
+    try {
+      await saveWorkoutDayNotesByDate(selectedDate, '');
+      setNotesInput('');
+      setIsConfirmDeleteNote(false);
+      setDeleteNotesFeedbackMsg('Usunięto notatkę ✓');
+      setTimeout(() => setDeleteNotesFeedbackMsg(null), 2500);
+    } catch (err) {
+      console.error('Błąd usuwania notatki:', err);
     }
   };
 
@@ -622,10 +638,29 @@ export const ActiveWorkoutView: React.FC = () => {
           </button>
 
           <div className="flex items-center gap-2">
+            {deleteNotesFeedbackMsg && (
+              <span className="text-[10px] font-bold text-rose-400 font-sans animate-in fade-in">
+                {deleteNotesFeedbackMsg}
+              </span>
+            )}
             {isNotesSaved && (
               <span className="text-[10px] font-bold text-emerald-400 font-sans animate-in fade-in">
                 Zapisano ✓
               </span>
+            )}
+            {((dayData?.notes && dayData.notes.trim().length > 0) || notesInput.trim().length > 0) && !isNotesExpanded && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsNotesExpanded(true);
+                  setIsConfirmDeleteNote(true);
+                }}
+                className="flex items-center justify-center h-6 w-6 rounded-none bg-black border border-zinc-800 text-zinc-500 hover:text-rose-400 cursor-pointer transition-colors"
+                title="Usuń notatkę"
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
             )}
             <button
               type="button"
@@ -655,17 +690,52 @@ export const ActiveWorkoutView: React.FC = () => {
               rows={3}
               className="w-full rounded-none border border-zinc-700 bg-black/90 p-2.5 text-xs text-white placeholder-zinc-500 focus:border-red-600 focus:outline-none font-sans resize-none transition-colors"
             />
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] text-zinc-500 font-sans">
-                {notesInput.trim().length > 0
-                  ? `${notesInput.trim().length} znaków`
-                  : 'Brak notatek'}
-              </span>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] text-zinc-500 font-sans">
+                  {notesInput.trim().length > 0
+                    ? `${notesInput.trim().length} znaków`
+                    : 'Brak notatek'}
+                </span>
+
+                {((dayData?.notes && dayData.notes.trim().length > 0) || notesInput.trim().length > 0) && (
+                  isConfirmDeleteNote ? (
+                    <div className="flex items-center gap-1.5 animate-in fade-in">
+                      <span className="text-[10px] text-zinc-300 font-sans">Usunąć?</span>
+                      <button
+                        type="button"
+                        onClick={handleDeleteNotes}
+                        className="rounded-none bg-red-700 hover:bg-red-600 px-2 py-0.5 text-[10px] font-bold text-white uppercase cursor-pointer transition-colors"
+                      >
+                        Tak, usuń
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsConfirmDeleteNote(false)}
+                        className="rounded-none bg-black border border-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400 hover:text-white cursor-pointer transition-colors"
+                      >
+                        Anuluj
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsConfirmDeleteNote(true)}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500 hover:text-rose-400 transition-colors cursor-pointer"
+                      title="Usuń tę notatkę"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      <span>Usuń notatkę</span>
+                    </button>
+                  )
+                )}
+              </div>
+
               <button
                 type="button"
                 onClick={handleSaveNotes}
                 style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
-                className="rounded-none bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-white cursor-pointer transition-colors shadow-none"
+                className="rounded-none bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-white cursor-pointer transition-colors shadow-none shrink-0"
               >
                 Zapisz notatkę
               </button>
