@@ -1,0 +1,8 @@
+{
+  "name": "Rzeźnik",
+  "description": "Lokalny tracker treningów siłowych w modelu Local-Only z kalkulatorem 1RM Epleya, logowaniem RIR i analityką tonażu.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

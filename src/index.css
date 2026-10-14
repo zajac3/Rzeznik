@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+body, button, input, select, textarea {
+  font-family: 'Space Grotesk', sans-serif !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Globalne wymuszenie czcionki Space Grotesk na wszystkich elementach i kontenerach */
+*, *::before, *::after,
+html, body, div, span, applet, object, iframe,
+h1, h2, h3, h4, h5, h6, p, blockquote, pre,
+a, abbr, acronym, address, big, cite, code,
+del, dfn, em, img, ins, kbd, q, s, samp,
+small, strike, strong, sub, sup, tt, var,
+b, u, i, center,
+dl, dt, dd, ol, ul, li,
+fieldset, form, label, legend,
+table, caption, tbody, tfoot, thead, tr, th, td,
+article, aside, canvas, details, embed, 
+figure, figcaption, footer, header, hgroup, 
+menu, nav, output, ruby, section, summary,
+time, mark, audio, video {
+  font-family: 'Space Grotesk', sans-serif !important;
+}
+
+/* Wymuszenie czcionki Space Grotesk nawet dla klas mono lub systemowych */
+.font-mono, [class*="font-mono"], .font-sans, [class*="font-sans"] {
+  font-family: 'Space Grotesk', sans-serif !important;
+}
+
+html {
+  background-color: #09090b !important;
+  color-scheme: dark;
+}
+
+@layer base {
+  *, ::before, ::after {
+    font-family: 'Space Grotesk', sans-serif;
+    -webkit-tap-highlight-color: transparent !important;
+  }
+  html, body {
+    background-color: #09090b !important;
+    color: #f4f4f5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  button, [role="button"], input, select, textarea, a {
+    -webkit-tap-highlight-color: transparent !important;
+  }
+  button:focus,
+  button:active,
+  button:focus:not(:focus-visible),
+  button:focus-visible,
+  [role="button"]:focus,
+  [role="button"]:active,
+  [role="button"]:focus-visible,
+  [type="button"]:focus,
+  [type="button"]:active,
+  [type="button"]:focus-visible,
+  [type="submit"]:focus,
+  [type="submit"]:active,
+  [type="submit"]:focus-visible {
+    outline: none !important;
+  }
+}
+
+/* Dodatkowy selektor poza layer dla maksymalnej specyficzności */
+button:focus,
+button:active,
+button:focus-visible,
+[role="button"]:focus,
+[role="button"]:active {
+  outline: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+/* Eliminacja brzydkich obramowań i zaznaczeń przy klikaniu w wykresy (Recharts & SVG) */
+.recharts-wrapper,
+.recharts-wrapper *,
+.recharts-surface,
+.recharts-surface *,
+.recharts-responsive-container,
+.recharts-responsive-container *,
+svg,
+svg *,
+path,
+rect,
+circle,
+g {
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+svg:focus,
+svg *:focus,
+.recharts-wrapper:focus,
+.recharts-surface:focus {
+  outline: none !important;
+}
+
+/* Zabezpieczenie przed wychodzeniem natywnego kalendarza input[type=date] na telefonach */
+input[type="date"] {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+  color-scheme: dark !important;
+}
+
