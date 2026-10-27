@@ -140,7 +140,7 @@ export const ExportView: React.FC = () => {
                 </span>
               </div>
             </div>
-            <span className="text-red-500 text-xs font-bold uppercase tracking-wider">Pobierz JSON →</span>
+            <span className="text-red-500 text-xs font-bold uppercase tracking-wider">Pobierz JSON</span>
           </button>
 
           {/* Export CSV Button */}
@@ -162,7 +162,7 @@ export const ExportView: React.FC = () => {
                 </span>
               </div>
             </div>
-            <span className="text-red-500 text-xs font-bold uppercase tracking-wider">Pobierz CSV →</span>
+            <span className="text-red-500 text-xs font-bold uppercase tracking-wider">Pobierz CSV</span>
           </button>
 
           {/* Import Button */}
@@ -180,7 +180,7 @@ export const ExportView: React.FC = () => {
                 </span>
               </div>
             </div>
-            <span className="text-red-500 text-xs font-bold uppercase tracking-wider">Wgraj →</span>
+            <span className="text-red-500 text-xs font-bold uppercase tracking-wider">Wgraj</span>
             <input
               type="file"
               accept=".json,application/json"

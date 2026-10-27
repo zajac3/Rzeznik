@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Trash2,
-  Copy,
   Check,
   Dumbbell,
   RotateCcw,
@@ -1063,9 +1062,6 @@ export const ActiveWorkoutView: React.FC = () => {
                             (1RM: {sr.estimated1RM} kg)
                           </span>
                         )}
-                        <span className="rounded-none bg-red-950 border border-red-700 px-1.5 py-0.5 text-[9px] font-bold text-red-400 font-sans">
-                          Nowy PR!
-                        </span>
                       </div>
                     </div>
                   ))}
@@ -1131,9 +1127,6 @@ export const ActiveWorkoutView: React.FC = () => {
                         {rd.name}
                       </span>
                     </div>
-                    <span className="text-xs font-bold text-red-500 uppercase">
-                      Załaduj →
-                    </span>
                   </button>
                 ))
               )}
@@ -1333,18 +1326,6 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
     }
   };
 
-  const handleCopyLastSet = async () => {
-    if (!task.id || task.sets.length === 0) return;
-    const last = task.sets[task.sets.length - 1];
-    setWeightInput(String(last.weight));
-    setRepsInput(String(last.reps));
-    setRirInput(last.rir);
-    await addLoggedSet(task.id, last.weight, last.reps, last.rir);
-    if (!isExpanded) {
-      handleToggle();
-    }
-  };
-
   const handleDeleteSet = async (setId?: number) => {
     if (!setId) return;
     await deleteLoggedSet(setId);
@@ -1372,9 +1353,8 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
               {task.exercise?.name ?? 'Ćwiczenie'}
             </h4>
 
-            {/* Licznik serii oraz przyciski akcji (3 z 3 serii i Usuń w tej samej linijce, Powtórz niżej) */}
+            {/* Licznik serii oraz przycisk Usuń */}
             <div className="flex flex-col gap-1.5 pt-0.5" onClick={(e) => e.stopPropagation()}>
-              {/* Linijka 1: Licznik serii oraz Usuń */}
               <div className="flex items-center gap-2">
                 {!task.is_extra && targetSets > 0 ? (
                   loggedSetsCount >= targetSets ? (
@@ -1405,21 +1385,6 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
                   <span>Usuń</span>
                 </button>
               </div>
-
-              {/* Linijka 2: Powtórz ostatnią serię */}
-              {task.sets.length > 0 && (
-                <div className="flex items-center">
-                  <button
-                    type="button"
-                    onClick={handleCopyLastSet}
-                    className="inline-flex items-center gap-1 h-6 rounded-none bg-black border border-zinc-800 px-2 text-xs font-bold text-zinc-300 hover:bg-zinc-900 hover:text-white transition-colors cursor-pointer shrink-0"
-                    title="Powtórz parametry ostatniej serii"
-                  >
-                    <Copy className="h-3 w-3" />
-                    <span>Powtórz</span>
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -1626,6 +1591,7 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
                         <option value={4}>4</option>
                         <option value={5}>5</option>
                       </select>
+                      <span className="text-[10px] text-zinc-400">RIR</span>
                     </div>
                   </div>
 
@@ -1656,19 +1622,27 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
                 key={set.id}
                 className="flex items-center justify-between py-2 px-1 hover:bg-zinc-900/60 rounded-none transition-colors"
               >
-                <div className="flex items-center gap-2 sm:gap-2.5">
-                  <span className="font-sans text-xs font-bold text-zinc-400 w-5 shrink-0">
+                <div className="grid grid-cols-[24px_62px_42px_44px_48px] sm:grid-cols-[28px_68px_46px_46px_52px] items-center gap-1.5 sm:gap-2">
+                  <span className="font-sans text-xs font-bold text-zinc-400 tabular-nums truncate">
                     #{setIdx + 1}
                   </span>
-                  <span className="font-bold text-white font-sans shrink-0">{set.weight} kg</span>
-                  <span className="text-zinc-400 font-sans shrink-0">× {set.reps}</span>
-                  {isSetPR && (
-                    <span className="inline-flex h-5 items-center justify-center gap-1 rounded-none bg-red-950/80 border border-red-700/80 px-1.5 text-[10px] font-bold text-red-400 font-sans leading-none shrink-0">
-                      <Flame className="h-2.5 w-2.5 fill-red-600 text-red-600 shrink-0" />
-                      <span>PR</span>
-                    </span>
-                  )}
-                  <RirPill rir={set.rir} />
+                  <span className="font-bold text-white font-sans tabular-nums truncate">
+                    {set.weight} kg
+                  </span>
+                  <span className="text-zinc-400 font-sans tabular-nums truncate">
+                    × {set.reps}
+                  </span>
+                  <div className="flex items-center">
+                    {isSetPR && (
+                      <span className="inline-flex h-5 w-full items-center justify-center gap-1 rounded-none bg-red-950/80 border border-red-700/80 px-1 text-[10px] font-bold text-red-400 font-sans leading-none shrink-0">
+                        <Flame className="h-2.5 w-2.5 fill-red-600 text-red-600 shrink-0" />
+                        <span>PR</span>
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center">
+                    <RirPill rir={set.rir} />
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-1">
@@ -1790,20 +1764,20 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
 const RirPill: React.FC<{ rir: number }> = ({ rir }) => {
   if (rir === 0) {
     return (
-      <span className="inline-flex h-5 items-center justify-center rounded-none bg-rose-950/80 border border-rose-600 text-rose-300 px-1.5 text-[10px] font-bold font-sans leading-none shrink-0">
+      <span className="inline-flex h-5 w-full items-center justify-center rounded-none bg-rose-950/80 border border-rose-600 text-rose-300 px-1 text-[10px] font-bold font-sans leading-none shrink-0">
         RIR 0
       </span>
     );
   }
   if (rir <= 2) {
     return (
-      <span className="inline-flex h-5 items-center justify-center rounded-none bg-amber-950/80 border border-amber-600 text-amber-300 px-1.5 text-[10px] font-bold font-sans leading-none shrink-0">
+      <span className="inline-flex h-5 w-full items-center justify-center rounded-none bg-amber-950/80 border border-amber-600 text-amber-300 px-1 text-[10px] font-bold font-sans leading-none shrink-0">
         RIR {rir}
       </span>
     );
   }
   return (
-    <span className="inline-flex h-5 items-center justify-center rounded-none bg-black border border-zinc-700 text-zinc-300 px-1.5 text-[10px] font-bold font-sans leading-none shrink-0">
+    <span className="inline-flex h-5 w-full items-center justify-center rounded-none bg-black border border-zinc-700 text-zinc-300 px-1 text-[10px] font-bold font-sans leading-none shrink-0">
       RIR {rir}
     </span>
   );

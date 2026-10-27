@@ -1779,164 +1779,127 @@ export async function exportDatabaseToCsv(): Promise<string> {
     setsByTask.set(s.task_id, list);
   }
 
-  // Funkcja formatowania komórki arkusza kalkulacyjnego (CSV ze średnikiem dla Excela i Google Sheets)
   const formatCell = (val: string | number | undefined | null): string => {
     if (val === undefined || val === null || val === '') return '';
     if (typeof val === 'number') {
       if (Number.isNaN(val)) return '';
       const rounded = Math.round(val * 10) / 10;
-      return String(rounded);
+      return String(rounded).replace('.', ',');
     }
     const str = String(val).replace(/\r\n/g, ' ').replace(/[\r\n]/g, ' ').trim();
-    if (str.includes(';') || str.includes('"') || str.includes(',')) {
+    if (str.includes(';') || str.includes('"')) {
       return `"${str.replace(/"/g, '""')}"`;
     }
     return str;
   };
 
+  const formatPolishDate = (isoDate: string): string => {
+    const parts = isoDate.split('-');
+    if (parts.length !== 3) return isoDate;
+    return `${parts[2]}.${parts[1]}.${parts[0]}`;
+  };
+
+  // Eksportujemy wyłącznie dni, w których faktycznie wykonano serie (od najnowszych)
+  const completedDays = days
+    .filter((day) => {
+      if (!day.id) return false;
+      const dTasks = tasksByDay.get(day.id) || [];
+      return dTasks.some((t) => t.id && (setsByTask.get(t.id) || []).length > 0);
+    })
+    .sort((a, b) => b.date.localeCompare(a.date));
+
   const headers = [
-    'Data treningu',
-    'Nazwa treningu',
-    'Status',
+    'Data',
+    'Trening',
     'Ćwiczenie',
     'Partia mięśniowa',
-    'Nr serii',
-    'Ciężar [kg]',
-    'Powtórzenia',
-    'RIR',
-    'Tonaż serii [kg]',
-    'Szacowany 1RM [kg]',
-    'Typ',
-    'Notatki do treningu',
+    'Wykonane serie (Ciężar x Powt.)',
+    'Liczba serii',
+    'Objętość [kg]',
+    'Maks. 1RM [kg]',
   ];
 
-  const rows: string[] = [headers.join(';')];
+  const rows: string[] = [headers.map(formatCell).join(';')];
 
-  for (let dIdx = 0; dIdx < days.length; dIdx++) {
-    const day = days[dIdx];
+  for (let dIdx = 0; dIdx < completedDays.length; dIdx++) {
+    const day = completedDays[dIdx];
     if (!day.id) continue;
 
     const dayTasks = (tasksByDay.get(day.id) || []).sort((a, b) => a.sort_order - b.sort_order);
-    const dayStatusLabel =
-      day.status === 'completed'
-        ? 'Zakończony'
-        : day.status === 'in_progress'
-        ? 'W trakcie'
-        : 'Zaplanowany';
-
+    const formattedDate = formatPolishDate(day.date);
     const dayTitle = day.routine_day_name || 'Trening wolny';
-    const cleanDayNotes = (day.notes || '').trim();
 
-    // Sprawdź czy dzień ma jakiekolwiek zarejestrowane serie
-    const hasAnyLoggedSets = dayTasks.some(
-      (t) => t.id && (setsByTask.get(t.id) || []).length > 0
-    );
+    let dayTotalSets = 0;
+    let dayTotalVolume = 0;
+    let dayExercisesCount = 0;
 
-    if (dayTasks.length === 0) {
+    for (const task of dayTasks) {
+      if (!task.id) continue;
+      const taskSets = (setsByTask.get(task.id) || [])
+        .filter((s) => s.weight > 0 || s.reps > 0)
+        .sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
+
+      if (taskSets.length === 0) continue;
+
+      const ex = task.exercise_id ? exerciseMap.get(task.exercise_id) : undefined;
+      const exName = ex?.name || 'Ćwiczenie';
+      const muscleGroup = ex?.muscle_group || '';
+
+      let exerciseVolume = 0;
+      let exerciseMax1RM = 0;
+
+      const setsFormatted = taskSets
+        .map((s) => {
+          const vol = s.weight > 0 && s.reps > 0 ? s.weight * s.reps : 0;
+          exerciseVolume += vol;
+          const est1rm = s.weight > 0 && s.reps > 0 ? calculateEpley1RM(s.weight, s.reps) : 0;
+          if (est1rm > exerciseMax1RM) {
+            exerciseMax1RM = est1rm;
+          }
+          const weightStr = String(Math.round(s.weight * 10) / 10).replace('.', ',');
+          return `${weightStr}kg x ${s.reps}`;
+        })
+        .join('  |  ');
+
+      dayExercisesCount += 1;
+      dayTotalSets += taskSets.length;
+      dayTotalVolume += exerciseVolume;
+
       rows.push(
         [
-          formatCell(day.date),
-          formatCell(dayTitle),
-          formatCell(dayStatusLabel),
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          formatCell(cleanDayNotes),
-        ].join(';')
+          formattedDate,
+          dayTitle,
+          exName,
+          muscleGroup,
+          setsFormatted,
+          taskSets.length,
+          Math.round(exerciseVolume * 10) / 10,
+          exerciseMax1RM > 0 ? exerciseMax1RM : '',
+        ]
+          .map(formatCell)
+          .join(';')
       );
-    } else if (!hasAnyLoggedSets) {
-      // Dzień ma zaplanowane ćwiczenia, ale jeszcze brak serii
-      dayTasks.forEach((task, tIdx) => {
-        const ex = task.exercise_id ? exerciseMap.get(task.exercise_id) : undefined;
-        const exName = ex?.name || 'Ćwiczenie';
-        const muscleGroup = ex?.muscle_group || '';
-        const taskType = task.is_extra ? 'Dodatkowe' : 'Z planu';
-
-        rows.push(
-          [
-            formatCell(day.date),
-            formatCell(dayTitle),
-            formatCell(dayStatusLabel),
-            formatCell(exName),
-            formatCell(muscleGroup),
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            formatCell(taskType),
-            formatCell(tIdx === 0 ? cleanDayNotes : ''),
-          ].join(';')
-        );
-      });
-    } else {
-      // Dzień z wykonanymi seriami
-      let isFirstRowOfDay = true;
-
-      for (const task of dayTasks) {
-        const ex = task.exercise_id ? exerciseMap.get(task.exercise_id) : undefined;
-        const exName = ex?.name || 'Ćwiczenie';
-        const muscleGroup = ex?.muscle_group || '';
-        const taskType = task.is_extra ? 'Dodatkowe' : 'Z planu';
-        const taskSets = (setsByTask.get(task.id!) || []).sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
-
-        if (taskSets.length === 0) {
-          rows.push(
-            [
-              formatCell(day.date),
-              formatCell(dayTitle),
-              formatCell(dayStatusLabel),
-              formatCell(exName),
-              formatCell(muscleGroup),
-              '',
-              '',
-              '',
-              '',
-              '',
-              '',
-              formatCell(taskType),
-              formatCell(isFirstRowOfDay ? cleanDayNotes : ''),
-            ].join(';')
-          );
-          isFirstRowOfDay = false;
-        } else {
-          taskSets.forEach((s, sIdx) => {
-            const vol = s.weight > 0 && s.reps > 0 ? Math.round(s.weight * s.reps * 10) / 10 : 0;
-            const est1rm = s.weight > 0 && s.reps > 0 ? calculateEpley1RM(s.weight, s.reps) : null;
-
-            rows.push(
-              [
-                formatCell(day.date),
-                formatCell(dayTitle),
-                formatCell(dayStatusLabel),
-                formatCell(exName),
-                formatCell(muscleGroup),
-                formatCell(sIdx + 1),
-                formatCell(s.weight),
-                formatCell(s.reps),
-                formatCell(s.rir),
-                formatCell(vol > 0 ? vol : ''),
-                formatCell(est1rm !== null ? est1rm : ''),
-                formatCell(taskType),
-                formatCell(isFirstRowOfDay ? cleanDayNotes : ''),
-              ].join(';')
-            );
-            isFirstRowOfDay = false;
-          });
-        }
-      }
     }
 
-    // Pusty wiersz separatora pomiędzy różnymi dniami treningowymi dla czytelności arkusza
-    if (dIdx < days.length - 1) {
-      rows.push(';;;;;;;;;;;;');
+    if (dayExercisesCount > 0) {
+      rows.push(
+        [
+          formattedDate,
+          dayTitle,
+          `PODSUMOWANIE TRENINGU (${dayExercisesCount} ćw.)`,
+          '',
+          day.notes ? `Notatka: ${day.notes.trim()}` : '',
+          dayTotalSets,
+          Math.round(dayTotalVolume * 10) / 10,
+          '',
+        ]
+          .map(formatCell)
+          .join(';')
+      );
+
+      if (dIdx < completedDays.length - 1) {
+        rows.push(';;;;;;;');
+      }
     }
   }
 

@@ -83,9 +83,13 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
   // Interwał: domyślnie co 4 dni
   const [intervalDays, setIntervalDays] = useState<number>(4);
 
-  // 3. Zakres dat i horyzont czasowy: dokładnie 4 tyg., 8 tyg., nieokreślony
+  // 3. Zakres dat: data rozpoczęcia i data zakończenia
   const [startDateISO, setStartDateISO] = useState<string>(initialDateISO || todayISO);
-  const [durationType, setDurationType] = useState<DurationOption>('8');
+  const [endDateISO, setEndDateISO] = useState<string>(() => {
+    const start = parseISODate(initialDateISO || todayISO);
+    start.setDate(start.getDate() + 56);
+    return formatDateToISO(start);
+  });
 
   // 4. Opcje konfliktów
   const [skipExistingPlanned, setSkipExistingPlanned] = useState<boolean>(true);
@@ -112,6 +116,9 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
       }
       if (initialDateISO) {
         setStartDateISO(initialDateISO);
+        const start = parseISODate(initialDateISO);
+        start.setDate(start.getDate() + 56);
+        setEndDateISO(formatDateToISO(start));
       }
       setStatusFeedback(null);
 
@@ -122,20 +129,7 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
     }
   }, [isOpen, initialDateISO, initialRoutineDayId, routineDays]);
 
-  // Obliczenie daty końcowej:
-  // 4 tyg. = +28 dni, 8 tyg. = +56 dni, nieokreślony = +182 dni (26 tygodni / pół roku w przód)
-  const effectiveEndDateISO = useMemo(() => {
-    const start = parseISODate(startDateISO);
-    if (durationType === '4') {
-      start.setDate(start.getDate() + 28);
-    } else if (durationType === '8') {
-      start.setDate(start.getDate() + 56);
-    } else {
-      // Nieokreślony: planujemy 26 tygodni (pół roku) w przód w kalendarzu
-      start.setDate(start.getDate() + 182);
-    }
-    return formatDateToISO(start);
-  }, [startDateISO, durationType]);
+  const effectiveEndDateISO = endDateISO;
 
   // Generowanie listy dat dla nowego cyklu
   const generatedDates = useMemo(() => {
@@ -240,7 +234,7 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
         interval_days: mode === 'interval' ? intervalDays : undefined,
         start_date: startDateISO,
         end_date: effectiveEndDateISO,
-        duration_type: durationType,
+        duration_type: '8',
         dates: generatedDates,
         skipExistingPlanned,
       });
@@ -492,7 +486,7 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
               )}
             </div>
 
-            {/* 3. ZAKRES DAT I HORYZONT (OPCJE: 4 TYG., 8 TYG., NIEOKREŚLONY) */}
+            {/* 3. ZAKRES DAT (DATA ROZPOCZĘCIA I DATA ZAKOŃCZENIA) */}
             <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-300 uppercase tracking-wider block">
                 3. Zakres czasowy
@@ -506,58 +500,29 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
                   <input
                     type="date"
                     value={startDateISO}
-                    onChange={(e) => setStartDateISO(e.target.value)}
+                    onChange={(e) => {
+                      const nextStart = e.target.value;
+                      setStartDateISO(nextStart);
+                      if (endDateISO && nextStart > endDateISO) {
+                        setEndDateISO(nextStart);
+                      }
+                    }}
                     className="w-full bg-black border border-zinc-700 px-3 py-1.5 text-xs text-white focus:border-red-600 focus:outline-none"
                   />
                 </div>
 
                 <div>
                   <span className="text-[10px] text-zinc-400 block mb-1 font-semibold uppercase">
-                    Horyzont czasowy:
+                    Data zakończenia:
                   </span>
-                  <div className="grid grid-cols-3 gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setDurationType('4')}
-                      className={`py-1.5 text-[11px] font-bold uppercase rounded-none border text-center transition-colors cursor-pointer ${
-                        durationType === '4'
-                          ? 'border-red-600 bg-red-950 text-white'
-                          : 'border-zinc-800 bg-black text-zinc-400 hover:text-zinc-200'
-                      }`}
-                    >
-                      4 tyg.
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDurationType('8')}
-                      className={`py-1.5 text-[11px] font-bold uppercase rounded-none border text-center transition-colors cursor-pointer ${
-                        durationType === '8'
-                          ? 'border-red-600 bg-red-950 text-white'
-                          : 'border-zinc-800 bg-black text-zinc-400 hover:text-zinc-200'
-                      }`}
-                    >
-                      8 tyg.
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDurationType('indefinite')}
-                      className={`py-1.5 text-[11px] font-bold uppercase rounded-none border text-center transition-colors cursor-pointer ${
-                        durationType === 'indefinite'
-                          ? 'border-red-600 bg-red-950 text-white'
-                          : 'border-zinc-800 bg-black text-zinc-400 hover:text-zinc-200'
-                      }`}
-                      title="Nieokreślony - generuje sesje na kolejne 6 miesięcy w przód"
-                    >
-                      Nieokreślony
-                    </button>
-                  </div>
+                  <input
+                    type="date"
+                    min={startDateISO}
+                    value={endDateISO}
+                    onChange={(e) => setEndDateISO(e.target.value)}
+                    className="w-full bg-black border border-zinc-700 px-3 py-1.5 text-xs text-white focus:border-red-600 focus:outline-none"
+                  />
                 </div>
-              </div>
-
-              <div className="flex items-center justify-end pt-0.5">
-                <span className="text-[10px] text-zinc-500 font-bold uppercase">
-                  {durationType === 'indefinite' ? 'Generuje: 6 miesięcy w przód' : `Do: ${effectiveEndDateISO}`}
-                </span>
               </div>
             </div>
 
@@ -718,10 +683,7 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
                               </span>
                             </div>
                             <span className="text-[10px] text-zinc-400 block mt-0.5">
-                              Od {cycle.start_date} • Horyzont:{' '}
-                              {cycle.duration_type === 'indefinite'
-                                ? 'Nieokreślony'
-                                : `${cycle.duration_type} tyg.`}
+                              Od {cycle.start_date} • Do {cycle.end_date}
                             </span>
                           </div>
 

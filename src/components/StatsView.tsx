@@ -19,7 +19,6 @@ import {
   X,
   Search,
   Plus,
-  RotateCcw,
 } from 'lucide-react';
 import {
   db,
@@ -29,7 +28,6 @@ import {
   calculateEpley1RM,
   addManual1RM,
   deleteManual1RM,
-  delete1RMRecord,
   deleteExercise1RMRecords,
   type BodyWeightEntry,
   type Manual1RMEntry,
@@ -37,60 +35,7 @@ import {
 } from '../db/db';
 import { getTodayISO } from '../utils/dateUtils';
 import { WorkoutHistoryView } from './WorkoutHistoryView';
-
-// 4 domyślne boje objęte maksami:
-// 1. Wyciskanie sztangi na poziomej
-// 2. Wyciskanie hantli na ławce dodatniej
-// 3. Martwy ciąg
-// 4 domyślne boje objęte maksami:
-// 1. Wyciskanie sztangi na poziomej
-// 2. Wyciskanie hantli na ławce dodatniej
-// 3. Martwy ciąg
-// 4. Przysiady ze sztangą (zwykłe)
-const isDefaultMaxExercise = (name: string): boolean => {
-  const n = name.toLowerCase().trim();
-  // 1. Wyciskanie sztangi na poziomej
-  if (
-    n.includes('wyciskanie sztangi na ławce poziomej') ||
-    n.includes('wyciskanie sztangi na ławce płaskiej') ||
-    n === 'wyciskanie sztangi leżąc' ||
-    (n.includes('wyciskanie sztangi') && (n.includes('poziom') || n.includes('płask')))
-  ) {
-    return true;
-  }
-  // 2. Wyciskanie hantli na ławce dodatniej
-  if (
-    n.includes('wyciskanie hantli') &&
-    (n.includes('skośn') || n.includes('dodatn') || n.includes('skos')) &&
-    !n.includes('ujemn')
-  ) {
-    return true;
-  }
-  // 3. Martwy ciąg
-  if (n === 'martwy ciąg' || n === 'martwy ciąg klasyczny') {
-    return true;
-  }
-  // 4. Przysiady ze sztangą (zwykłe)
-  if (
-    n.includes('przysiady ze sztangą na karku') ||
-    n.includes('back squat') ||
-    n === 'przysiady ze sztangą' ||
-    n === 'przysiad ze sztangą' ||
-    (n.includes('przysiad') && n.includes('sztang') && !n.includes('przedn') && !n.includes('front') && !n.includes('bułgar') && !n.includes('hack') && !n.includes('zercher'))
-  ) {
-    return true;
-  }
-  return false;
-};
-
-const getDefaultMaxOrder = (name: string): number => {
-  const n = name.toLowerCase().trim();
-  if (n.includes('wyciskanie sztangi')) return 1;
-  if (n.includes('wyciskanie hantli')) return 2;
-  if (n.includes('martwy ciąg')) return 3;
-  if (n.includes('przysiad')) return 4;
-  return 99;
-};
+import { getCategoryIcon } from '../utils/categoryIcons';
 
 export const StatsView: React.FC = () => {
   // Trzy subzakładki: [Wykresy], [Maksy] oraz [Historia treningów] (Segmented Control)
@@ -152,13 +97,13 @@ export const StatsView: React.FC = () => {
     return { days, tasks, sets, dayMap, taskMap };
   }, []);
 
-  // Śledzone ćwiczenia w zakładce Maksy (domyślnie 4 główne boje + własne dodane przez użytkownika)
+  // Śledzone ćwiczenia w zakładce Maksy (domyślnie pusta lista - użytkownik sam dodaje ćwiczenia)
   const [trackedMaxExerciseIds, setTrackedMaxExerciseIds] = useState<number[]>(() => {
     try {
-      const saved = localStorage.getItem('pakomat_tracked_max_exercise_ids_v3');
+      const saved = localStorage.getItem('pakomat_tracked_max_exercise_ids_v4');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed;
         }
       }
@@ -171,36 +116,11 @@ export const StatsView: React.FC = () => {
   const [maxSearchQuery, setMaxSearchQuery] = useState<string>('');
   const [maxMuscleFilter, setMaxMuscleFilter] = useState<string>('Wszystkie');
 
-  // Inicjalizacja domyślnych 4 bojów po załadowaniu ćwiczeń
-  useEffect(() => {
-    if (exercises.length === 0) return;
-    setTrackedMaxExerciseIds((prev) => {
-      if (prev.length > 0) {
-        const valid = prev.filter((id) => exercises.some((e) => e.id === id));
-        if (valid.length > 0) return valid;
-      }
-      const defaultExs = exercises
-        .filter((e) => isDefaultMaxExercise(e.name))
-        .sort((a, b) => getDefaultMaxOrder(a.name) - getDefaultMaxOrder(b.name));
-      const defIds = defaultExs.map((e) => e.id!).filter(Boolean);
-      try {
-        localStorage.setItem('pakomat_tracked_max_exercise_ids_v3', JSON.stringify(defIds));
-      } catch {}
-      return defIds;
-    });
-  }, [exercises]);
-
   const compoundExercises = useMemo(() => {
-    if (exercises.length === 0) return [];
-    if (trackedMaxExerciseIds.length > 0) {
-      const matched = trackedMaxExerciseIds
-        .map((id) => exercises.find((e) => e.id === id))
-        .filter((e): e is Exercise => e !== undefined);
-      if (matched.length > 0) return matched;
-    }
-    return exercises
-      .filter((e) => isDefaultMaxExercise(e.name))
-      .sort((a, b) => getDefaultMaxOrder(a.name) - getDefaultMaxOrder(b.name));
+    if (exercises.length === 0 || trackedMaxExerciseIds.length === 0) return [];
+    return trackedMaxExerciseIds
+      .map((id) => exercises.find((e) => e.id === id))
+      .filter((e): e is Exercise => e !== undefined);
   }, [exercises, trackedMaxExerciseIds]);
 
   const handleAddTrackedMaxExercise = (exerciseId: number) => {
@@ -208,7 +128,7 @@ export const StatsView: React.FC = () => {
       if (prev.includes(exerciseId)) return prev;
       const next = [...prev, exerciseId];
       try {
-        localStorage.setItem('pakomat_tracked_max_exercise_ids_v3', JSON.stringify(next));
+        localStorage.setItem('pakomat_tracked_max_exercise_ids_v4', JSON.stringify(next));
       } catch {}
       return next;
     });
@@ -222,7 +142,7 @@ export const StatsView: React.FC = () => {
     setTrackedMaxExerciseIds((prev) => {
       const next = prev.filter((id) => id !== exerciseId);
       try {
-        localStorage.setItem('pakomat_tracked_max_exercise_ids_v3', JSON.stringify(next));
+        localStorage.setItem('pakomat_tracked_max_exercise_ids_v4', JSON.stringify(next));
       } catch {}
       return next;
     });
@@ -232,18 +152,6 @@ export const StatsView: React.FC = () => {
     if (manualExerciseId === exerciseId) {
       setManualExerciseId(null);
     }
-  };
-
-  const handleResetDefaultMaxExercises = () => {
-    const defaultExs = exercises
-      .filter((e) => isDefaultMaxExercise(e.name))
-      .sort((a, b) => getDefaultMaxOrder(a.name) - getDefaultMaxOrder(b.name));
-    const defIds = defaultExs.map((e) => e.id!).filter(Boolean);
-    setTrackedMaxExerciseIds(defIds);
-    try {
-      localStorage.setItem('pakomat_tracked_max_exercise_ids_v3', JSON.stringify(defIds));
-    } catch {}
-    setSelectedMaxExerciseId(null);
   };
 
   const filteredExercisesForMaxSearch = useMemo(() => {
@@ -471,7 +379,7 @@ export const StatsView: React.FC = () => {
 
     const perDateMap = new Map<
       string,
-      { maxWeight: number; max1RM: number; reps: number; rir: number }
+      { volume: number; weight: number; max1RM: number; reps: number; rir: number }
     >();
 
     for (const set of relevantSets) {
@@ -480,12 +388,14 @@ export const StatsView: React.FC = () => {
       const date = day?.date;
       if (!date) continue;
 
+      const setVolume = Math.round(set.weight * set.reps * 10) / 10;
       const est1RM = calculateEpley1RM(set.weight, set.reps);
       const existing = perDateMap.get(date);
 
-      if (!existing || set.weight > existing.maxWeight) {
+      if (!existing || setVolume > existing.volume) {
         perDateMap.set(date, {
-          maxWeight: set.weight,
+          volume: setVolume,
+          weight: set.weight,
           max1RM: est1RM,
           reps: set.reps,
           rir: set.rir,
@@ -503,7 +413,8 @@ export const StatsView: React.FC = () => {
       return {
         date,
         shortDate: formattedDate,
-        weight: item.maxWeight,
+        volume: item.volume,
+        weight: item.weight,
         estimated1RM: item.max1RM,
         reps: item.reps,
         rir: item.rir,
@@ -653,11 +564,8 @@ export const StatsView: React.FC = () => {
               {/* Wybór ćwiczenia */}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b-2 border-zinc-800 gap-3">
                 <div>
-                  <span className="text-xs font-semibold text-red-500 uppercase tracking-wider">
-                    Historia obciążeń
-                  </span>
                   <h3 className="text-base font-bold text-white tracking-wide uppercase">
-                    Wykres progresu
+                    Wykres progresu ciężaru
                   </h3>
                 </div>
 
@@ -711,7 +619,7 @@ export const StatsView: React.FC = () => {
                           tickLine={false}
                         />
                         <YAxis
-                          domain={['dataMin - 5', 'dataMax + 5']}
+                          domain={[(dataMin: number) => Math.max(0, Math.floor(dataMin - 20)), (dataMax: number) => Math.ceil(dataMax + 20)]}
                           tick={{ fontSize: 11, fill: '#a1a1aa' }}
                           stroke="#52525b"
                           tickLine={false}
@@ -720,8 +628,8 @@ export const StatsView: React.FC = () => {
                         <Tooltip content={<CustomChartTooltip />} />
                         <Line
                           type="monotone"
-                          dataKey="weight"
-                          name="Podniesiony ciężar"
+                          dataKey="volume"
+                          name="Objętość serii"
                           stroke="#dc2626"
                           strokeWidth={2.5}
                           dot={{
@@ -950,9 +858,6 @@ export const StatsView: React.FC = () => {
           <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 shadow-lg shadow-black/50">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b-2 border-zinc-800 gap-3">
               <div>
-                <span className="text-xs font-semibold text-red-500 uppercase tracking-wider">
-                  Progresja siłowa
-                </span>
                 <h3 className="text-base font-bold text-white tracking-wide uppercase">
                   Wykres maksów (1RM)
                 </h3>
@@ -963,14 +868,19 @@ export const StatsView: React.FC = () => {
                 <div className="relative flex-1 sm:min-w-[200px]">
                   <select
                     value={effectiveMaxExerciseId ?? ''}
+                    disabled={compoundExercises.length === 0}
                     onChange={(e) => setSelectedMaxExerciseId(Number(e.target.value))}
-                    className="w-full appearance-none rounded-none border border-zinc-700 bg-black px-3 py-2 pr-8 text-xs font-semibold text-white focus:border-red-600 focus:outline-none uppercase"
+                    className="w-full appearance-none rounded-none border border-zinc-700 bg-black px-3 py-2 pr-8 text-xs font-semibold text-white focus:border-red-600 focus:outline-none uppercase disabled:text-zinc-500"
                   >
-                    {compoundExercises.map((ex) => (
-                      <option key={ex.id} value={ex.id}>
-                        {ex.name}
-                      </option>
-                    ))}
+                    {compoundExercises.length === 0 ? (
+                      <option value="">Brak dodanych ćwiczeń</option>
+                    ) : (
+                      compoundExercises.map((ex) => (
+                        <option key={ex.id} value={ex.id}>
+                          {ex.name}
+                        </option>
+                      ))
+                    )}
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
                 </div>
@@ -991,11 +901,19 @@ export const StatsView: React.FC = () => {
               {maxProgressionChartData.length === 0 ? (
                 <div className="py-10 px-6 text-center rounded-none bg-black/60 border border-zinc-800 flex flex-col items-center justify-center">
                   <p className="text-sm font-semibold text-zinc-300 max-w-sm mx-auto leading-relaxed text-balance">
-                    Brak danych 1RM dla{' '}
-                    <span className="text-white font-bold">{currentMaxExerciseObj?.name ?? 'wybranego ćwiczenia'}</span>.
+                    {currentMaxExerciseObj ? (
+                      <>
+                        Brak danych 1RM dla{' '}
+                        <span className="text-white font-bold">{currentMaxExerciseObj.name}</span>.
+                      </>
+                    ) : (
+                      'Dodaj ćwiczenie do śledzenia maksów, aby zobaczyć wykres 1RM.'
+                    )}
                   </p>
                   <p className="mt-2 text-xs text-zinc-500 max-w-xs mx-auto leading-relaxed">
-                    Wykonaj trening z tym ćwiczeniem lub dodaj własny rekord w formularzu poniżej.
+                    {currentMaxExerciseObj
+                      ? 'Wykonaj trening z tym ćwiczeniem lub dodaj własny rekord w formularzu poniżej.'
+                      : 'Kliknij przycisk „Dodaj”, aby wybrać ćwiczenie z bazy.'}
                   </p>
                 </div>
               ) : (
@@ -1046,17 +964,12 @@ export const StatsView: React.FC = () => {
             </div>
           </div>
 
-          {/* 2. DYSKRETNY FORMULARZ: DODAJ WŁASNY REKORD 1RM */}
+          {/* 2. FORMULARZ: NOWY REKORD */}
           <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 space-y-3 shadow-lg shadow-black/50">
             <div className="flex items-center justify-between pb-2 border-b-2 border-zinc-800">
-              <div>
-                <span className="text-xs font-semibold text-red-500 uppercase tracking-wider">
-                  Rejestracja rekordu
-                </span>
-                <h4 className="text-sm font-bold text-white tracking-wide uppercase">
-                  Dodaj własny rekord 1RM
-                </h4>
-              </div>
+              <span className="text-xs font-bold text-red-500 uppercase tracking-wider">
+                NOWY REKORD
+              </span>
             </div>
 
             {manualSuccessMsg && (
@@ -1078,12 +991,15 @@ export const StatsView: React.FC = () => {
                     onChange={(e) => {
                       if (e.target.value === 'ADD_FROM_LIST') {
                         setIsAddMaxModalOpen(true);
-                      } else {
+                      } else if (e.target.value) {
                         setManualExerciseId(Number(e.target.value));
                       }
                     }}
                     className="w-full appearance-none rounded-none border border-zinc-700 bg-black px-3 py-1.5 pr-8 text-xs text-white focus:border-red-600 focus:outline-none uppercase"
                   >
+                    {compoundExercises.length === 0 && (
+                      <option value="">Wybierz ćwiczenie...</option>
+                    )}
                     {compoundExercises.map((ex) => (
                       <option key={ex.id} value={ex.id}>
                         {ex.name}
@@ -1143,8 +1059,9 @@ export const StatsView: React.FC = () => {
               <div className="sm:col-span-4 flex justify-end pt-1">
                 <button
                   type="submit"
+                  disabled={!effectiveManualExerciseId}
                   style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
-                  className="inline-flex items-center gap-1.5 rounded-none bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider px-4 py-2 text-xs transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-none bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 disabled:opacity-50 text-white font-bold uppercase tracking-wider px-4 py-2 text-xs transition-colors cursor-pointer"
                 >
                   <span className="text-sm font-bold leading-none">+</span>
                   <span>Zapisz rekord 1RM</span>
@@ -1153,251 +1070,108 @@ export const StatsView: React.FC = () => {
             </form>
           </div>
 
-          {/* 3. AKTUALNE MAKSY (PODSUMOWANIE DLA ŚLEDZONYCH BOJÓW) */}
-          <div className="space-y-2.5">
-            <div className="px-1 flex items-center justify-between flex-wrap gap-2">
-              <div>
-                <h4 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
-                  Podsumowanie rekordów (Najwyższy 1RM)
-                </h4>
-                <span className="text-[10px] text-zinc-500 font-normal">
-                  Śledzone ćwiczenia: {compoundExercises.length}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddMaxModalOpen(true)}
-                  className="inline-flex items-center gap-1 rounded-none border border-red-700 bg-red-950/60 hover:bg-red-900 px-2.5 py-1 text-[11px] font-bold text-red-300 hover:text-white uppercase tracking-wider transition-colors cursor-pointer"
-                  title="Wybierz dodatkowe ćwiczenie z listy do śledzenia maksów"
-                >
-                  <Plus className="h-3 w-3" />
-                  <span>Dodaj ćwiczenie</span>
-                </button>
-                {trackedMaxExerciseIds.length !== 4 && (
-                  <button
-                    type="button"
-                    onClick={handleResetDefaultMaxExercises}
-                    className="inline-flex items-center gap-1 rounded-none border border-zinc-800 bg-black hover:border-zinc-700 px-2 py-1 text-[10px] text-zinc-400 hover:text-zinc-200 uppercase tracking-wider transition-colors cursor-pointer"
-                    title="Przywróć 4 domyślne boje"
-                  >
-                    <RotateCcw className="h-2.5 w-2.5" />
-                    <span>Domyślne</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              {maxesSummaryList.map((item) => {
-                const hasData = item.best1RM !== null;
-                const isConfirmingDeleteRecord = confirmDeleteExerciseId === item.exercise.id;
-                const isConfirmingRemoveTracked = confirmRemoveTrackedId === item.exercise.id;
-                const isCustom = !isDefaultMaxExercise(item.exercise.name);
-
-                return (
-                  <div
-                    key={item.exercise.id}
-                    className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-3.5 border-2 border-zinc-700/80 space-y-1 shadow-md shadow-black/40"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <h4 className="text-xs font-bold text-white uppercase truncate">
-                            {item.exercise.name}
-                          </h4>
-                          {isCustom && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-none bg-red-950/80 border border-red-800 text-red-300 uppercase tracking-wider shrink-0">
-                              Dodane
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-[10px] text-zinc-400 uppercase tracking-wider font-semibold block mt-0.5">
-                          {item.exercise.muscle_group}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <div className="text-right">
-                          {hasData ? (
-                            <div className="flex items-baseline gap-1 justify-end">
-                              <span className="text-lg font-bold text-red-500 font-sans">
-                                {item.best1RM}
-                              </span>
-                              <span className="text-xs font-bold text-zinc-300 font-sans">kg 1RM</span>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-zinc-500">
-                              Brak wpisów
-                            </span>
-                          )}
-                        </div>
-
-                        {hasData && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setConfirmRemoveTrackedId(null);
-                              setConfirmDeleteExerciseId(item.exercise.id!);
-                            }}
-                            className="text-zinc-500 hover:text-rose-400 p-1 cursor-pointer transition-colors"
-                            title="Usuń ten rekord"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-
-                        {/* Przycisk usunięcia ćwiczenia z listy śledzonych maksów */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setConfirmDeleteExerciseId(null);
-                            setConfirmRemoveTrackedId(item.exercise.id!);
-                          }}
-                          className="text-zinc-600 hover:text-zinc-200 p-1 cursor-pointer transition-colors"
-                          title="Usuń ćwiczenie z listy maksów"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {hasData && (
-                      <div className="pt-1.5 border-t-2 border-zinc-900 text-[10px] text-zinc-400 flex items-center justify-between">
-                        <span>{item.source}</span>
-                        <span>{item.date}</span>
-                      </div>
-                    )}
-
-                    {/* Potwierdzenie usunięcia wartości rekordu */}
-                    {isConfirmingDeleteRecord && (
-                      <div className="pt-2 mt-2 border-t-2 border-zinc-800 flex items-center justify-between text-xs animate-in fade-in duration-150">
-                        <span className="text-zinc-300">Usunąć ten rekord?</span>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteMaxRecord(item)}
-                            className="rounded-none bg-red-700 hover:bg-red-600 px-2.5 py-1 text-[11px] font-bold text-white uppercase cursor-pointer"
-                          >
-                            Usuń rekord
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDeleteExerciseId(null)}
-                            className="rounded-none bg-black border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400 hover:text-white cursor-pointer"
-                          >
-                            Anuluj
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Potwierdzenie usunięcia ćwiczenia z listy śledzonych */}
-                    {isConfirmingRemoveTracked && (
-                      <div className="pt-2 mt-2 border-t-2 border-zinc-800 flex items-center justify-between text-xs animate-in fade-in duration-150">
-                        <span className="text-zinc-300">Usunąć ćwiczenie z maksów?</span>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleRemoveTrackedMaxExercise(item.exercise.id!);
-                              setConfirmRemoveTrackedId(null);
-                            }}
-                            className="rounded-none bg-zinc-800 hover:bg-zinc-700 text-red-400 border border-red-800 px-2.5 py-1 text-[11px] font-bold uppercase cursor-pointer"
-                          >
-                            Usuń z listy
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmRemoveTrackedId(null)}
-                            className="rounded-none bg-black border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400 hover:text-white cursor-pointer"
-                          >
-                            Anuluj
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 4. HISTORIA WPISÓW RĘCZNYCH (Z MOŻLIWOŚCIĄ USUNIĘCIA) */}
-          {manual1RMs.length > 0 && (
-            <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 border-2 border-zinc-700/80 space-y-2 shadow-lg shadow-black/50">
-              <h4 className="text-xs font-semibold text-zinc-200 uppercase tracking-wider">
-                Historia wpisów ręcznych 1RM
+          {/* 3. AKTUALNE MAKSY (PODSUMOWANIE REKORDÓW) */}
+          <div className="space-y-3">
+            <div className="px-1 flex items-center justify-between gap-2">
+              <h4 className="text-xs font-bold text-zinc-300 uppercase tracking-wider">
+                Podsumowanie rekordów
               </h4>
+            </div>
 
-              <div className="divide-y-2 divide-zinc-900 text-xs max-h-48 overflow-y-auto">
-                {manual1RMs
-                  .slice()
-                  .reverse()
-                  .map((entry) => {
-                    const ex = exercises.find((e) => e.id === entry.exercise_id);
-                    const isConfirming = confirmDeleteManualId === entry.id;
-                    const maxForEx = maxesSummaryList.find((m) => m.exercise.id === entry.exercise_id)?.best1RM;
-                    const isTopRecord = maxForEx !== null && maxForEx !== undefined && entry.weight >= maxForEx;
+            {maxesSummaryList.length === 0 ? (
+              <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-6 text-center border-2 border-zinc-700/80 shadow-lg shadow-black/50">
+                <p className="text-sm font-semibold text-zinc-300">
+                  Brak dodanych ćwiczeń
+                </p>
+                <p className="mt-1 text-xs text-zinc-400">
+                  Dodaj ćwiczenie przyciskiem „Dodaj” przy wykresie lub w sekcji „Nowy rekord”, aby śledzić rekordy 1RM.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {maxesSummaryList.map((item) => {
+                  const hasData = item.best1RM !== null;
+                  const isConfirmingDelete = confirmDeleteExerciseId === item.exercise.id;
+                  const CategoryIcon = getCategoryIcon(item.exercise.muscle_group);
 
-                    return (
-                      <div
-                        key={entry.id}
-                        className="flex items-center justify-between py-2 px-1 hover:bg-zinc-900/60 rounded-none transition-colors"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="text-zinc-500">{entry.date}</span>
-                          <span className="font-sans text-zinc-200 font-medium truncate max-w-[140px]">
-                            {ex?.name ?? 'Ćwiczenie'}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-red-500 font-sans">{entry.weight} kg</span>
-                            {isTopRecord && (
-                              <span className="inline-flex items-center gap-1 bg-red-950/80 border border-red-700/80 px-1.5 py-0.5 text-[9px] font-bold text-red-400 font-sans">
-                                <Flame className="h-2.5 w-2.5 fill-red-600 text-red-600 shrink-0" />
-                                PR
-                              </span>
-                            )}
+                  return (
+                    <div
+                      key={item.exercise.id}
+                      className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 shadow-lg shadow-black/50 space-y-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3 min-w-0 flex-1">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-none bg-black border border-zinc-800 shrink-0 mt-0.5 overflow-hidden">
+                            <CategoryIcon className="w-6 h-6 object-contain opacity-85" />
                           </div>
-                          {isConfirming ? (
-                            <div className="flex items-center gap-1.5">
+                          <div className="min-w-0 flex-1 flex flex-col justify-center gap-1.5">
+                            <h4 className="text-sm font-bold text-white tracking-wide uppercase break-words leading-snug">
+                              {item.exercise.name}
+                            </h4>
+                            <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                              {hasData ? (
+                                <span className="inline-flex items-center gap-1.5 h-6 rounded-none bg-red-950 border border-red-700 px-2 text-xs font-bold text-red-300 font-sans tracking-tight shrink-0">
+                                  <Flame className="h-3 w-3 fill-red-600 text-red-500 shrink-0" />
+                                  <span>{item.best1RM} kg 1RM</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center h-6 rounded-none bg-black border border-zinc-800 px-2 text-xs font-semibold text-zinc-400 font-sans tracking-tight shrink-0">
+                                  <span>Brak wpisów</span>
+                                </span>
+                              )}
+
                               <button
                                 type="button"
-                                onClick={async () => {
-                                  await handleDeleteManual1RM(entry.id);
-                                  setConfirmDeleteManualId(null);
-                                }}
-                                className="rounded-none bg-red-700 hover:bg-red-600 px-2 py-0.5 text-[10px] font-bold text-white uppercase cursor-pointer"
+                                onClick={() => setConfirmDeleteExerciseId(item.exercise.id!)}
+                                className="inline-flex items-center gap-1 h-6 rounded-none border border-zinc-800 bg-black px-2 text-xs font-bold text-zinc-400 hover:border-red-900 hover:text-rose-400 transition-colors cursor-pointer shrink-0"
+                                title="Usuń ćwiczenie i jego rekordy z listy maksów"
                               >
-                                Usuń
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setConfirmDeleteManualId(null)}
-                                className="rounded-none bg-black border border-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400 hover:text-white cursor-pointer"
-                              >
-                                Anuluj
+                                <Trash2 className="h-3 w-3" />
+                                <span>Usuń</span>
                               </button>
                             </div>
-                          ) : (
+                          </div>
+                        </div>
+                      </div>
+
+                      {hasData && (
+                        <div className="pt-2 border-t-2 border-zinc-800 text-xs text-zinc-400 flex items-center justify-between">
+                          <span>{item.source}</span>
+                          <span className="font-mono text-[11px]">{item.date}</span>
+                        </div>
+                      )}
+
+                      {isConfirmingDelete && (
+                        <div className="pt-2 border-t-2 border-zinc-800 flex items-center justify-between text-xs animate-in fade-in duration-150">
+                          <span className="text-zinc-300">Usunąć z podsumowania rekordów?</span>
+                          <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              onClick={() => setConfirmDeleteManualId(entry.id!)}
-                              className="text-zinc-500 hover:text-rose-400 p-1 cursor-pointer transition-colors"
-                              title="Usuń wpis"
+                              onClick={async () => {
+                                await handleDeleteMaxRecord(item);
+                                handleRemoveTrackedMaxExercise(item.exercise.id!);
+                                setConfirmDeleteExerciseId(null);
+                              }}
+                              className="rounded-none bg-red-700 hover:bg-red-600 px-2.5 py-1 text-[11px] font-bold text-white uppercase cursor-pointer"
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
+                              Tak, usuń
                             </button>
-                          )}
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteExerciseId(null)}
+                              className="rounded-none bg-black border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400 hover:text-white cursor-pointer"
+                            >
+                              Anuluj
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
 
@@ -1680,7 +1454,7 @@ function CustomChartTooltip({ active, payload }: any) {
       <div className="rounded-none bg-black p-2.5 border-2 border-zinc-700 text-xs shadow-2xl">
         <div className="font-semibold text-white mb-0.5">{data.date}</div>
         <div className="text-red-500 font-bold">
-          Ciężar: {data.weight} kg
+          Objętość serii: {data.volume} kg
         </div>
         {data.reps && (
           <div className="text-zinc-400 text-[11px]">
