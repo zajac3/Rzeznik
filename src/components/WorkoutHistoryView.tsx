@@ -9,6 +9,9 @@ import {
   Flame,
   Filter,
   ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  ArrowLeftRight,
 } from 'lucide-react';
 import {
   db,
@@ -99,6 +102,11 @@ export const WorkoutHistoryView: React.FC = () => {
       setsByTask.set(s.task_id, list);
     }
 
+    // Sortuj dni chronologicznie (od najstarszych), aby wyliczyć objętość i RIR z poprzedniego treningu dla każdego ćwiczenia
+    const sortedDaysAsc = [...days].sort((a, b) => a.date.localeCompare(b.date));
+    const lastStatsByExercise = new Map<number, { tonnage: number; avgRir: number }>();
+    const lastStatsByRoutineAndExercise = new Map<string, { tonnage: number; avgRir: number }>();
+
     const result: Array<{
       id: number;
       date: string;
@@ -113,13 +121,23 @@ export const WorkoutHistoryView: React.FC = () => {
         exerciseName: string;
         muscleGroup?: string;
         sets: LoggedSet[];
+        totalTonnage: number;
+        previousTonnage: number | null;
+        avgRir: number | null;
+        previousAvgRir: number | null;
       }>;
     }> = [];
 
-    for (const day of days) {
+    for (const day of sortedDaysAsc) {
       if (!day.id) continue;
       const dayTasks = tasksByDay.get(day.id) || [];
       dayTasks.sort((a, b) => a.sort_order - b.sort_order);
+
+      const routineKey = day.routine_day_id
+        ? `id_${day.routine_day_id}`
+        : day.routine_day_name && day.routine_day_name.trim() !== ''
+        ? `name_${day.routine_day_name.trim().toLowerCase()}`
+        : null;
 
       let dayTotalSets = 0;
       let dayTotalTonnage = 0;
@@ -129,6 +147,10 @@ export const WorkoutHistoryView: React.FC = () => {
         exerciseName: string;
         muscleGroup?: string;
         sets: LoggedSet[];
+        totalTonnage: number;
+        previousTonnage: number | null;
+        avgRir: number | null;
+        previousAvgRir: number | null;
       }> = [];
 
       for (const t of dayTasks) {
@@ -137,9 +159,39 @@ export const WorkoutHistoryView: React.FC = () => {
         tSets.sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
         if (tSets.length > 0) {
           dayTotalSets += tSets.length;
+          let taskTonnage = 0;
+          let rirSum = 0;
           for (const s of tSets) {
-            dayTotalTonnage += s.weight * s.reps;
+            const setVol = s.weight * s.reps;
+            taskTonnage += setVol;
+            dayTotalTonnage += setVol;
+            rirSum += s.rir ?? 0;
           }
+          taskTonnage = Math.round(taskTonnage * 10) / 10;
+          const avgRir = Math.round((rirSum / tSets.length) * 100) / 100;
+
+          let previousTonnage: number | null = null;
+          let previousAvgRir: number | null = null;
+          if (routineKey && lastStatsByRoutineAndExercise.has(`${routineKey}__${t.exercise_id}`)) {
+            const prev = lastStatsByRoutineAndExercise.get(`${routineKey}__${t.exercise_id}`);
+            previousTonnage = prev?.tonnage ?? null;
+            previousAvgRir = prev?.avgRir ?? null;
+          } else if (lastStatsByExercise.has(t.exercise_id)) {
+            const prev = lastStatsByExercise.get(t.exercise_id);
+            previousTonnage = prev?.tonnage ?? null;
+            previousAvgRir = prev?.avgRir ?? null;
+          }
+
+          if (taskTonnage > 0) {
+            lastStatsByExercise.set(t.exercise_id, { tonnage: taskTonnage, avgRir });
+            if (routineKey) {
+              lastStatsByRoutineAndExercise.set(`${routineKey}__${t.exercise_id}`, {
+                tonnage: taskTonnage,
+                avgRir,
+              });
+            }
+          }
+
           const ex = exerciseMap.get(t.exercise_id);
           enrichedTasks.push({
             id: t.id,
@@ -147,6 +199,10 @@ export const WorkoutHistoryView: React.FC = () => {
             exerciseName: ex?.name ?? 'Ćwiczenie',
             muscleGroup: ex?.muscle_group,
             sets: tSets,
+            totalTonnage: taskTonnage,
+            previousTonnage,
+            avgRir,
+            previousAvgRir,
           });
         }
       }
@@ -505,13 +561,72 @@ export const WorkoutHistoryView: React.FC = () => {
                                 )}
                               </div>
                               <div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="text-[11px] font-bold text-zinc-500">
                                     #{taskIdx + 1}
                                   </span>
                                   <h4 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wide">
                                     {task.exerciseName}
                                   </h4>
+                                  {task.previousTonnage !== null &&
+                                    task.previousTonnage !== undefined &&
+                                    task.previousTonnage > 0 && (() => {
+                                      const isVolumeHigher = task.totalTonnage > task.previousTonnage;
+                                      const isVolumeLower = task.totalTonnage < task.previousTonnage;
+                                      const isRirHigher =
+                                        !isVolumeHigher &&
+                                        !isVolumeLower &&
+                                        task.avgRir !== null &&
+                                        task.avgRir !== undefined &&
+                                        task.previousAvgRir !== null &&
+                                        task.previousAvgRir !== undefined &&
+                                        task.avgRir > task.previousAvgRir;
+                                      const isRirLower =
+                                        !isVolumeHigher &&
+                                        !isVolumeLower &&
+                                        task.avgRir !== null &&
+                                        task.avgRir !== undefined &&
+                                        task.previousAvgRir !== null &&
+                                        task.previousAvgRir !== undefined &&
+                                        task.avgRir < task.previousAvgRir;
+
+                                      if (isVolumeHigher || isRirHigher) {
+                                        return (
+                                          <span
+                                            className="inline-flex items-center justify-center text-emerald-400 shrink-0"
+                                            title={
+                                              isVolumeHigher
+                                                ? `Większa objętość niż na poprzednim treningu (${task.totalTonnage} kg vs ${task.previousTonnage} kg)`
+                                                : `Taka sama objętość (${task.totalTonnage} kg), wyższy zapas RIR niż na poprzednim treningu`
+                                            }
+                                          >
+                                            <ArrowUp className="h-3.5 w-3.5 stroke-[2.75]" />
+                                          </span>
+                                        );
+                                      }
+                                      if (isVolumeLower || isRirLower) {
+                                        return (
+                                          <span
+                                            className="inline-flex items-center justify-center text-red-500 shrink-0"
+                                            title={
+                                              isVolumeLower
+                                                ? `Mniejsza objętość niż na poprzednim treningu (${task.totalTonnage} kg vs ${task.previousTonnage} kg)`
+                                                : `Taka sama objętość (${task.totalTonnage} kg), mniejszy zapas RIR niż na poprzednim treningu`
+                                            }
+                                          >
+                                            <ArrowDown className="h-3.5 w-3.5 stroke-[2.75]" />
+                                          </span>
+                                        );
+                                      }
+                                      return (
+                                        <span
+                                          className="inline-flex items-center justify-center text-orange-400 shrink-0"
+                                          title={`Taka sama objętość i RIR jak na poprzednim treningu (${task.totalTonnage} kg)`}
+                                        >
+                                          <ArrowLeftRight className="h-3.5 w-3.5 stroke-[2.5]" />
+                                        </span>
+                                      );
+                                    })()}
                                 </div>
                                 {task.muscleGroup && (
                                   <span className="text-[10px] text-zinc-400">

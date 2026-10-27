@@ -11,6 +11,9 @@ import {
   Droplet,
   ChevronDown,
   FileText,
+  ArrowUp,
+  ArrowDown,
+  ArrowLeftRight,
 } from 'lucide-react';
 import {
   db,
@@ -1349,9 +1352,71 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
             <CategoryIcon className="w-6 h-6 object-contain opacity-85" />
           </div>
           <div className="min-w-0 flex-1 flex flex-col justify-center gap-1.5">
-            <h4 className="text-sm font-bold text-white tracking-wide uppercase group-hover:text-red-400 transition-colors break-words leading-snug">
-              {task.exercise?.name ?? 'Ćwiczenie'}
-            </h4>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <h4 className="text-sm font-bold text-white tracking-wide uppercase group-hover:text-red-400 transition-colors break-words leading-snug">
+                {task.exercise?.name ?? 'Ćwiczenie'}
+              </h4>
+              {task.sets.length > 0 &&
+                task.previousTonnage !== null &&
+                task.previousTonnage !== undefined &&
+                task.previousTonnage > 0 && (() => {
+                  const isVolumeHigher = task.totalTonnage > task.previousTonnage;
+                  const isVolumeLower = task.totalTonnage < task.previousTonnage;
+                  const isRirHigher =
+                    !isVolumeHigher &&
+                    !isVolumeLower &&
+                    task.avgRir !== null &&
+                    task.avgRir !== undefined &&
+                    task.previousAvgRir !== null &&
+                    task.previousAvgRir !== undefined &&
+                    task.avgRir > task.previousAvgRir;
+                  const isRirLower =
+                    !isVolumeHigher &&
+                    !isVolumeLower &&
+                    task.avgRir !== null &&
+                    task.avgRir !== undefined &&
+                    task.previousAvgRir !== null &&
+                    task.previousAvgRir !== undefined &&
+                    task.avgRir < task.previousAvgRir;
+
+                  if (isVolumeHigher || isRirHigher) {
+                    return (
+                      <span
+                        className="inline-flex items-center justify-center text-emerald-400 shrink-0"
+                        title={
+                          isVolumeHigher
+                            ? `Większa objętość niż na poprzednim treningu (${task.totalTonnage} kg vs ${task.previousTonnage} kg)`
+                            : `Taka sama objętość (${task.totalTonnage} kg), wyższy zapas RIR niż na poprzednim treningu`
+                        }
+                      >
+                        <ArrowUp className="h-4 w-4 stroke-[2.75]" />
+                      </span>
+                    );
+                  }
+                  if (isVolumeLower || isRirLower) {
+                    return (
+                      <span
+                        className="inline-flex items-center justify-center text-red-500 shrink-0"
+                        title={
+                          isVolumeLower
+                            ? `Mniejsza objętość niż na poprzednim treningu (${task.totalTonnage} kg vs ${task.previousTonnage} kg)`
+                            : `Taka sama objętość (${task.totalTonnage} kg), mniejszy zapas RIR niż na poprzednim treningu`
+                        }
+                      >
+                        <ArrowDown className="h-4 w-4 stroke-[2.75]" />
+                      </span>
+                    );
+                  }
+                  return (
+                    <span
+                      className="inline-flex items-center justify-center text-orange-400 shrink-0"
+                      title={`Taka sama objętość i RIR jak na poprzednim treningu (${task.totalTonnage} kg)`}
+                    >
+                      <ArrowLeftRight className="h-4 w-4 stroke-[2.5]" />
+                    </span>
+                  );
+                })()}
+            </div>
 
             {/* Licznik serii oraz przycisk Usuń */}
             <div className="flex flex-col gap-1.5 pt-0.5" onClick={(e) => e.stopPropagation()}>

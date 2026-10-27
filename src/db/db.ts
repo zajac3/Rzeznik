@@ -74,6 +74,9 @@ export interface FullTaskDetails extends PlannedTask {
   exercise?: Exercise;
   sets: LoggedSet[];
   totalTonnage: number;
+  previousTonnage?: number | null;
+  avgRir?: number | null;
+  previousAvgRir?: number | null;
   estimated1RM: number;
   target_sets?: number;
   is_extra?: boolean;
@@ -1428,35 +1431,67 @@ export async function getFullDayDetails(date: string): Promise<FullDayDetails | 
   let totalDayTonnage = 0;
   let totalDaySets = 0;
 
-  const enrichedTasks: FullTaskDetails[] = tasks.map((task) => {
-    const exercise = task.exercise_id ? exerciseMap.get(task.exercise_id) : undefined;
-    const taskSets = allSets.filter((s) => s.task_id === task.id);
-    taskSets.sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
+  const enrichedTasks: FullTaskDetails[] = await Promise.all(
+    tasks.map(async (task) => {
+      const exercise = task.exercise_id ? exerciseMap.get(task.exercise_id) : undefined;
+      const taskSets = allSets.filter((s) => s.task_id === task.id);
+      taskSets.sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
 
-    let taskTonnage = 0;
-    let max1RM = 0;
+      let taskTonnage = 0;
+      let max1RM = 0;
+      let rirSum = 0;
 
-    for (const set of taskSets) {
-      taskTonnage += calculateSetTonnage(set.weight, set.reps);
-      if (exercise?.calculate_1rm) {
-        const est1RM = calculateEpley1RM(set.weight, set.reps);
-        if (est1RM > max1RM) max1RM = est1RM;
+      for (const set of taskSets) {
+        taskTonnage += calculateSetTonnage(set.weight, set.reps);
+        rirSum += set.rir ?? 0;
+        if (exercise?.calculate_1rm) {
+          const est1RM = calculateEpley1RM(set.weight, set.reps);
+          if (est1RM > max1RM) max1RM = est1RM;
+        }
       }
-    }
 
-    totalDayTonnage += taskTonnage;
-    totalDaySets += taskSets.length;
+      totalDayTonnage += taskTonnage;
+      totalDaySets += taskSets.length;
 
-    return {
-      ...task,
-      exercise,
-      sets: taskSets,
-      totalTonnage: Math.round(taskTonnage * 10) / 10,
-      estimated1RM: max1RM,
-      target_sets: task.is_extra ? (task.target_sets ?? 0) : (task.target_sets || 3),
-      is_extra: task.is_extra || false,
-    };
-  });
+      const avgRir =
+        taskSets.length > 0 ? Math.round((rirSum / taskSets.length) * 100) / 100 : null;
+
+      let previousTonnage: number | null = null;
+      let previousAvgRir: number | null = null;
+      if (task.exercise_id) {
+        const prevSets = await getLastLoggedSetsForExercise(
+          day.date,
+          task.exercise_id,
+          day.routine_day_id,
+          day.routine_day_name
+        );
+        if (prevSets.length > 0) {
+          const prevSum = prevSets.reduce(
+            (acc, s) => acc + calculateSetTonnage(s.weight, s.reps),
+            0
+          );
+          if (prevSum > 0) {
+            previousTonnage = Math.round(prevSum * 10) / 10;
+            const prevRirSum = prevSets.reduce((acc, s) => acc + (s.rir ?? 0), 0);
+            previousAvgRir = Math.round((prevRirSum / prevSets.length) * 100) / 100;
+          }
+        }
+      }
+
+      return {
+        ...task,
+        exercise,
+        sets: taskSets,
+        totalTonnage: Math.round(taskTonnage * 10) / 10,
+        previousTonnage,
+        avgRir,
+        previousAvgRir,
+        estimated1RM: max1RM,
+        target_sets: task.is_extra ? (task.target_sets ?? 0) : (task.target_sets || 3),
+        is_extra: task.is_extra || false,
+      };
+    })
+  );
 
   return {
     ...day,
