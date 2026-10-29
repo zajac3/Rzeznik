@@ -568,65 +568,6 @@ export const WorkoutHistoryView: React.FC = () => {
                                   <h4 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wide break-words leading-snug">
                                     {task.exerciseName}
                                   </h4>
-                                  {task.previousTonnage !== null &&
-                                    task.previousTonnage !== undefined &&
-                                    task.previousTonnage > 0 && (() => {
-                                      const isVolumeHigher = task.totalTonnage > task.previousTonnage;
-                                      const isVolumeLower = task.totalTonnage < task.previousTonnage;
-                                      const isRirHigher =
-                                        !isVolumeHigher &&
-                                        !isVolumeLower &&
-                                        task.avgRir !== null &&
-                                        task.avgRir !== undefined &&
-                                        task.previousAvgRir !== null &&
-                                        task.previousAvgRir !== undefined &&
-                                        task.avgRir > task.previousAvgRir;
-                                      const isRirLower =
-                                        !isVolumeHigher &&
-                                        !isVolumeLower &&
-                                        task.avgRir !== null &&
-                                        task.avgRir !== undefined &&
-                                        task.previousAvgRir !== null &&
-                                        task.previousAvgRir !== undefined &&
-                                        task.avgRir < task.previousAvgRir;
-
-                                      if (isVolumeHigher || isRirHigher) {
-                                        return (
-                                          <span
-                                            className="inline-flex items-center justify-center text-emerald-400 shrink-0"
-                                            title={
-                                              isVolumeHigher
-                                                ? `Większa objętość niż na poprzednim treningu (${task.totalTonnage} kg vs ${task.previousTonnage} kg)`
-                                                : `Taka sama objętość (${task.totalTonnage} kg), wyższy zapas RIR niż na poprzednim treningu`
-                                            }
-                                          >
-                                            <ArrowUp className="h-3.5 w-3.5 stroke-[2.75]" />
-                                          </span>
-                                        );
-                                      }
-                                      if (isVolumeLower || isRirLower) {
-                                        return (
-                                          <span
-                                            className="inline-flex items-center justify-center text-red-500 shrink-0"
-                                            title={
-                                              isVolumeLower
-                                                ? `Mniejsza objętość niż na poprzednim treningu (${task.totalTonnage} kg vs ${task.previousTonnage} kg)`
-                                                : `Taka sama objętość (${task.totalTonnage} kg), mniejszy zapas RIR niż na poprzednim treningu`
-                                            }
-                                          >
-                                            <ArrowDown className="h-3.5 w-3.5 stroke-[2.75]" />
-                                          </span>
-                                        );
-                                      }
-                                      return (
-                                        <span
-                                          className="inline-flex items-center justify-center text-orange-400 shrink-0"
-                                          title={`Taka sama objętość i RIR jak na poprzednim treningu (${task.totalTonnage} kg)`}
-                                        >
-                                          <ArrowLeftRight className="h-3.5 w-3.5 stroke-[2.5]" />
-                                        </span>
-                                      );
-                                    })()}
                                 </div>
                                 {task.muscleGroup && (
                                   <span className="text-[10px] text-zinc-400">
@@ -635,9 +576,70 @@ export const WorkoutHistoryView: React.FC = () => {
                                 )}
                               </div>
                             </div>
-                            <span className="text-[11px] font-semibold text-zinc-400">
-                              {task.sets.length} {task.sets.length === 1 ? 'seria' : 'serie'}
-                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="text-[11px] font-semibold text-zinc-400">
+                                {task.sets.length} {task.sets.length === 1 ? 'seria' : 'serie'}
+                              </span>
+                              {task.previousTonnage !== null &&
+                                task.previousTonnage !== undefined &&
+                                task.previousTonnage > 0 && (() => {
+                                  const isVolumeHigher = task.totalTonnage > task.previousTonnage;
+                                  const isVolumeLower = task.totalTonnage < task.previousTonnage;
+                                  const isRirHigher =
+                                    !isVolumeHigher &&
+                                    !isVolumeLower &&
+                                    task.avgRir !== null &&
+                                    task.avgRir !== undefined &&
+                                    task.previousAvgRir !== null &&
+                                    task.previousAvgRir !== undefined &&
+                                    task.avgRir > task.previousAvgRir;
+                                  const isRirLower =
+                                    !isVolumeHigher &&
+                                    !isVolumeLower &&
+                                    task.avgRir !== null &&
+                                    task.avgRir !== undefined &&
+                                    task.previousAvgRir !== null &&
+                                    task.previousAvgRir !== undefined &&
+                                    task.avgRir < task.previousAvgRir;
+
+                                  if (isVolumeHigher || isRirHigher) {
+                                    return (
+                                      <div
+                                        className="flex items-center justify-center h-7 w-7 text-emerald-400 shrink-0"
+                                        title={
+                                          isVolumeHigher
+                                            ? `Większa objętość niż na poprzednim treningu (${task.totalTonnage} kg vs ${task.previousTonnage} kg)`
+                                            : `Taka sama objętość (${task.totalTonnage} kg), wyższy zapas RIR niż na poprzednim treningu`
+                                        }
+                                      >
+                                        <ArrowUp className="h-4 w-4 stroke-[2.5]" />
+                                      </div>
+                                    );
+                                  }
+                                  if (isVolumeLower || isRirLower) {
+                                    return (
+                                      <div
+                                        className="flex items-center justify-center h-7 w-7 text-red-500 shrink-0"
+                                        title={
+                                          isVolumeLower
+                                            ? `Mniejsza objętość niż na poprzednim treningu (${task.totalTonnage} kg vs ${task.previousTonnage} kg)`
+                                            : `Taka sama objętość (${task.totalTonnage} kg), mniejszy zapas RIR niż na poprzednim treningu`
+                                        }
+                                      >
+                                        <ArrowDown className="h-4 w-4 stroke-[2.5]" />
+                                      </div>
+                                    );
+                                  }
+                                  return (
+                                    <div
+                                      className="flex items-center justify-center h-7 w-7 text-orange-400 shrink-0"
+                                      title={`Taka sama objętość i RIR jak na poprzednim treningu (${task.totalTonnage} kg)`}
+                                    >
+                                      <ArrowLeftRight className="h-4 w-4 stroke-[2.5]" />
+                                    </div>
+                                  );
+                                })()}
+                            </div>
                           </div>
 
                           {/* Lista zarejestrowanych serii (ciężar, powtórzenia, RIR) */}
