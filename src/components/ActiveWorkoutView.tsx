@@ -1352,7 +1352,7 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
             <CategoryIcon className="w-6 h-6 object-contain opacity-85" />
           </div>
           <div className="min-w-0 flex-1 flex flex-col justify-center gap-1.5">
-            <div className="flex items-center gap-1.5 flex-wrap">
+            <div className="flex items-center gap-1.5 min-w-0">
               <h4 className="text-sm font-bold text-white tracking-wide uppercase group-hover:text-red-400 transition-colors break-words leading-snug">
                 {task.exercise?.name ?? 'Ćwiczenie'}
               </h4>

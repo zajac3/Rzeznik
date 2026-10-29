@@ -552,20 +552,20 @@ export const WorkoutHistoryView: React.FC = () => {
                           className="rounded-none bg-gradient-to-b from-zinc-950 to-black p-3.5 border border-zinc-800/90 space-y-2.5"
                         >
                           {/* Nagłówek ćwiczenia z ikoną partii */}
-                          <div className="flex items-center justify-between pb-2 border-b border-zinc-800/80">
-                            <div className="flex items-center gap-2.5">
+                          <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-800/80">
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
                               <div className="flex h-7 w-7 items-center justify-center rounded-none bg-black border border-zinc-800 shrink-0 overflow-hidden">
                                 {getCategoryIconElement(
                                   task.muscleGroup,
                                   'w-5 h-5 object-contain opacity-85'
                                 )}
                               </div>
-                              <div>
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="text-[11px] font-bold text-zinc-500">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className="text-[11px] font-bold text-zinc-500 shrink-0">
                                     #{taskIdx + 1}
                                   </span>
-                                  <h4 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wide">
+                                  <h4 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wide break-words leading-snug">
                                     {task.exerciseName}
                                   </h4>
                                   {task.previousTonnage !== null &&
