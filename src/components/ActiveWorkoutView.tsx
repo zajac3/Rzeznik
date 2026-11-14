@@ -26,15 +26,14 @@ import {
   movePlannedTask,
   reorderPlannedTasksList,
   getFullDayDetails,
-  syncWorkoutDayWithRoutine,
   assignRoutineDayToDate,
   unassignRoutineDayFromDate,
   deleteWorkoutSessionByDate,
-  clearWorkoutDaySets,
   saveWorkoutDayNotesByDate,
   getHistoricalPRs,
   isSetNewPR,
   calculateEpley1RM,
+  getWorkoutTrend,
   type FullDayDetails,
   type FullTaskDetails,
   type RoutineDay,
@@ -77,8 +76,6 @@ export const ActiveWorkoutView: React.FC = () => {
   const [isAddExtraOpen, setIsAddExtraOpen] = useState(false);
   const [isSelectPlanModalOpen, setIsSelectPlanModalOpen] = useState(false);
   const [isConfirmDeleteSession, setIsConfirmDeleteSession] = useState(false);
-  const [isConfirmResetData, setIsConfirmResetData] = useState(false);
-  const [resetFeedbackMsg, setResetFeedbackMsg] = useState<string | null>(null);
   const [notesInput, setNotesInput] = useState<string>('');
   const [isNotesSaved, setIsNotesSaved] = useState<boolean>(false);
   const [isNotesExpanded, setIsNotesExpanded] = useState<boolean>(false);
@@ -91,12 +88,10 @@ export const ActiveWorkoutView: React.FC = () => {
 
   useEffect(() => {
     setIsConfirmDeleteSession(false);
-    setIsConfirmResetData(false);
     setIsConfirmDeleteNote(false);
     setIsNotesExpanded(false);
     setExpandedTaskIds(new Set());
     setExpandAllTasksOnNextLoad(false);
-    setResetFeedbackMsg(null);
     setDeleteNotesFeedbackMsg(null);
   }, [selectedDate]);
 
@@ -181,18 +176,6 @@ export const ActiveWorkoutView: React.FC = () => {
     [selectedDate]
   );
 
-  // Bezpieczna synchronizacja brakujących ćwiczeń szablonu w tle (poza useLiveQuery)
-  useEffect(() => {
-    let isMounted = true;
-    syncWorkoutDayWithRoutine(selectedDate).catch((err) => {
-      if (isMounted) {
-        console.error('Błąd synchronizacji dnia z szablonem:', err);
-      }
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedDate, routineDays]);
 
   const isSavingNotesRef = useRef<boolean>(false);
 
@@ -262,6 +245,11 @@ export const ActiveWorkoutView: React.FC = () => {
 
   const handleDeleteTask = async (taskId?: number) => {
     if (!taskId) return;
+    setExpandedTaskIds((prev) => {
+      const next = new Set(prev);
+      next.delete(taskId);
+      return next;
+    });
     await removeTaskFromDay(taskId);
   };
 
@@ -325,6 +313,11 @@ export const ActiveWorkoutView: React.FC = () => {
 
     return list;
   }, [dayData, priorPRs]);
+
+  const workoutTrend = React.useMemo(() => {
+    if (!dayData?.tasks || dayData.tasks.length === 0) return null;
+    return getWorkoutTrend(dayData.tasks);
+  }, [dayData?.tasks]);
 
   const hasExercises = Boolean(dayData?.tasks && dayData.tasks.length > 0);
   const hasTemplate = Boolean(dayData?.routine_day_id || (dayData?.routine_day_name && dayData.routine_day_name.trim() !== ''));
@@ -599,45 +592,6 @@ export const ActiveWorkoutView: React.FC = () => {
               {dayData?.routine_day_name || 'Nieprzypisany trening'}
             </h2>
             <div className="flex items-center gap-2">
-              {/* Opcja: Wyzeruj dane z tego konkretnego treningu */}
-              {(dayData?.totalSets ?? 0) > 0 && (
-                isConfirmResetData ? (
-                  <div className="flex items-center gap-1.5 p-1 bg-black border border-zinc-700 animate-in fade-in">
-                    <span className="text-[11px] text-zinc-300">Wyzerować serie?</span>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (dayData?.id) {
-                          await clearWorkoutDaySets(dayData.id);
-                          setIsConfirmResetData(false);
-                          setResetFeedbackMsg('Wyzerowano dane serii na tym treningu.');
-                          setTimeout(() => setResetFeedbackMsg(null), 3000);
-                        }
-                      }}
-                      className="rounded-none bg-red-700 hover:bg-red-600 px-2 py-0.5 text-xs font-bold text-white uppercase cursor-pointer"
-                    >
-                      Tak
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsConfirmResetData(false)}
-                      className="rounded-none bg-zinc-900 border border-zinc-800 px-1.5 py-0.5 text-xs text-zinc-400 hover:text-white cursor-pointer"
-                    >
-                      Anuluj
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setIsConfirmResetData(true)}
-                    className="text-zinc-400 hover:text-red-400 font-bold uppercase text-xs border-b border-zinc-700/80 pb-0.5 cursor-pointer tracking-wider transition-colors"
-                    title="Wyzeruj serie i ciężary na tym konkretnym treningu"
-                  >
-                    Wyzeruj dane
-                  </button>
-                )
-              )}
-
               {/* Opcja: Usuń trening */}
               {(dayData?.routine_day_name || (dayData?.tasks && dayData.tasks.length > 0)) && (
                 isConfirmDeleteSession ? (
@@ -678,6 +632,34 @@ export const ActiveWorkoutView: React.FC = () => {
                 )
               )}
 
+              {/* Wskaźnik progresu całego treningu na podstawie sumy strzałek z ćwiczeń */}
+              {workoutTrend && (
+                <div
+                  className={`flex items-center justify-center h-7 w-7 shrink-0 ${
+                    workoutTrend.trend === 'up'
+                      ? 'text-emerald-400'
+                      : workoutTrend.trend === 'down'
+                      ? 'text-red-500'
+                      : 'text-orange-400'
+                  }`}
+                  title={
+                    workoutTrend.trend === 'up'
+                      ? `Trening lepszy niż poprzedni (bilans ćwiczeń: +${workoutTrend.score})`
+                      : workoutTrend.trend === 'down'
+                      ? `Trening słabszy niż poprzedni (bilans ćwiczeń: ${workoutTrend.score})`
+                      : 'Trening na takim samym poziomie jak poprzedni (bilans ćwiczeń: 0)'
+                  }
+                >
+                  {workoutTrend.trend === 'up' ? (
+                    <ArrowUp className="h-4 w-4 stroke-[2.5]" />
+                  ) : workoutTrend.trend === 'down' ? (
+                    <ArrowDown className="h-4 w-4 stroke-[2.5]" />
+                  ) : (
+                    <ArrowLeftRight className="h-4 w-4 stroke-[2.5]" />
+                  )}
+                </div>
+              )}
+
               {/* Przycisk zwijania / rozwijania całego treningu - tylko strzałka */}
               {hasExercises && (
                 <button
@@ -696,11 +678,6 @@ export const ActiveWorkoutView: React.FC = () => {
               )}
             </div>
           </div>
-          {resetFeedbackMsg && (
-            <div className="text-xs font-semibold text-amber-400 pt-1 text-center animate-in fade-in">
-              {resetFeedbackMsg}
-            </div>
-          )}
         </div>
 
         {/* Jeśli brak przypisanego planu i brak ćwiczeń na ten dzień */}

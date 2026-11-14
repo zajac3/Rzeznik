@@ -19,6 +19,7 @@ import {
   type LoggedSet,
   deleteWorkoutSessionById,
   getHistoricalPRs,
+  getWorkoutTrend,
   type ExerciseHistoricalPR,
   type RoutineDay,
 } from '../db/db';
@@ -532,13 +533,45 @@ export const WorkoutHistoryView: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Ikona rozwijania z rotacją */}
-                  <div className="flex items-center justify-center h-8 w-8 rounded-none bg-black border border-zinc-800 text-zinc-400 shrink-0">
-                    <ChevronDown
-                      className={`h-4 w-4 transition-transform duration-200 ${
-                        isExpanded ? 'transform rotate-180 text-red-500' : ''
-                      }`}
-                    />
+                  {/* Wskaźnik progresu całego treningu oraz ikona rozwijania z rotacją */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {(() => {
+                      const workoutTrend = getWorkoutTrend(session.tasks);
+                      if (!workoutTrend) return null;
+                      return (
+                        <div
+                          className={`flex items-center justify-center h-8 w-8 shrink-0 ${
+                            workoutTrend.trend === 'up'
+                              ? 'text-emerald-400'
+                              : workoutTrend.trend === 'down'
+                              ? 'text-red-500'
+                              : 'text-orange-400'
+                          }`}
+                          title={
+                            workoutTrend.trend === 'up'
+                              ? `Trening lepszy niż poprzedni (bilans ćwiczeń: +${workoutTrend.score})`
+                              : workoutTrend.trend === 'down'
+                              ? `Trening słabszy niż poprzedni (bilans ćwiczeń: ${workoutTrend.score})`
+                              : 'Trening na takim samym poziomie jak poprzedni (bilans ćwiczeń: 0)'
+                          }
+                        >
+                          {workoutTrend.trend === 'up' ? (
+                            <ArrowUp className="h-4 w-4 stroke-[2.5]" />
+                          ) : workoutTrend.trend === 'down' ? (
+                            <ArrowDown className="h-4 w-4 stroke-[2.5]" />
+                          ) : (
+                            <ArrowLeftRight className="h-4 w-4 stroke-[2.5]" />
+                          )}
+                        </div>
+                      );
+                    })()}
+                    <div className="flex items-center justify-center h-8 w-8 rounded-none bg-black border border-zinc-800 text-zinc-400 shrink-0">
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform duration-200 ${
+                          isExpanded ? 'transform rotate-180 text-red-500' : ''
+                        }`}
+                      />
+                    </div>
                   </div>
                 </button>
 

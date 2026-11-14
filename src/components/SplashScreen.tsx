@@ -39,17 +39,20 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
   return (
     <div
       onClick={handleSkip}
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-[#09090b] transition-opacity duration-600 ease-in-out select-none cursor-pointer ${
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-[#09090b] overflow-hidden transition-opacity duration-600 ease-in-out select-none cursor-pointer ${
         isShrinking ? 'opacity-0 pointer-events-none' : 'opacity-100'
       }`}
       aria-hidden="true"
     >
-
-      {/* Czerwona poświata atmosferyczna w centrum */}
+      {/* Płynna czerwona poświata atmosferyczna w centrum (radial-gradient gwarantujący brak artefaktów prostokąta) */}
       <div
-        className={`absolute h-80 w-80 rounded-full bg-red-600/20 blur-3xl transition-all duration-600 ease-out ${
+        className={`pointer-events-none absolute w-80 h-80 sm:w-96 sm:h-96 rounded-full transition-all duration-600 ease-out ${
           isShrinking ? 'scale-0 opacity-0' : 'scale-100 opacity-100'
         }`}
+        style={{
+          background:
+            'radial-gradient(circle at center, rgba(220, 38, 38, 0.45) 0%, rgba(185, 28, 28, 0.2) 35%, rgba(220, 38, 38, 0.05) 60%, transparent 75%)',
+        }}
       />
 
       {/* Kontener z logo - wycentrowany, płynnie kurczący się i znikający ku górze */}
@@ -61,12 +64,12 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
         }`}
       >
         <img
-          src="./logo.png"
+          src="/logo.png"
           onError={(e) => {
-            e.currentTarget.src = './logo.jpg';
+            e.currentTarget.src = '/logo.jpg';
           }}
           alt="Rzeźnik"
-          className="w-full max-w-[220px] sm:max-w-[260px] h-auto object-contain drop-shadow-[0_0_30px_rgba(220,38,38,0.5)] select-none"
+          className="w-full max-w-[220px] sm:max-w-[260px] h-auto object-contain select-none"
         />
       </div>
     </div>

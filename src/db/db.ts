@@ -88,6 +88,63 @@ export interface FullDayDetails extends WorkoutDay {
   totalSets: number;
 }
 
+export type TrendDirection = 'up' | 'down' | 'same';
+
+export interface TrendComparableTask {
+  sets: LoggedSet[];
+  totalTonnage: number;
+  previousTonnage?: number | null;
+  avgRir?: number | null;
+  previousAvgRir?: number | null;
+}
+
+export function getExerciseTrend(task: TrendComparableTask): TrendDirection | null {
+  if (
+    task.sets.length === 0 ||
+    task.previousTonnage === null ||
+    task.previousTonnage === undefined ||
+    task.previousTonnage <= 0
+  ) {
+    return null;
+  }
+
+  const isVolumeHigher = task.totalTonnage > task.previousTonnage;
+  const isVolumeLower = task.totalTonnage < task.previousTonnage;
+  const hasRir =
+    task.avgRir !== null &&
+    task.avgRir !== undefined &&
+    task.previousAvgRir !== null &&
+    task.previousAvgRir !== undefined;
+  const isRirHigher =
+    !isVolumeHigher && !isVolumeLower && hasRir && task.avgRir! > task.previousAvgRir!;
+  const isRirLower =
+    !isVolumeHigher && !isVolumeLower && hasRir && task.avgRir! < task.previousAvgRir!;
+
+  if (isVolumeHigher || isRirHigher) return 'up';
+  if (isVolumeLower || isRirLower) return 'down';
+  return 'same';
+}
+
+export function getWorkoutTrend(
+  tasks: TrendComparableTask[]
+): { trend: TrendDirection; score: number; comparedCount: number } | null {
+  let score = 0;
+  let comparedCount = 0;
+
+  for (const task of tasks) {
+    const exTrend = getExerciseTrend(task);
+    if (!exTrend) continue;
+    comparedCount += 1;
+    if (exTrend === 'up') score += 1;
+    else if (exTrend === 'down') score -= 1;
+  }
+
+  if (comparedCount === 0) return null;
+
+  const trend: TrendDirection = score > 0 ? 'up' : score < 0 ? 'down' : 'same';
+  return { trend, score, comparedCount };
+}
+
 export interface RecurringCycle {
   id?: number;
   routine_day_id: number;
