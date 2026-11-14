@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 interface SplashScreenProps {
   onFinish?: () => void;
@@ -6,28 +6,45 @@ interface SplashScreenProps {
 
 export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
   const [phase, setPhase] = useState<'showing' | 'shrinking' | 'done'>('showing');
+  const [logoReady, setLogoReady] = useState(false);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const onFinishRef = useRef(onFinish);
+  onFinishRef.current = onFinish;
 
+  // Sprawdź, czy obrazek jest już w cache lub uruchom awaryjny limit czasu oczekiwania
   useEffect(() => {
-    // Faza 1: Wyświetl logo na środku ekranu
+    if (imgRef.current?.complete && imgRef.current.naturalWidth > 0) {
+      setLogoReady(true);
+      return;
+    }
+    const maxWaitTimer = setTimeout(() => {
+      setLogoReady(true);
+    }, 1000);
+    return () => clearTimeout(maxWaitTimer);
+  }, []);
+
+  // Rozpocznij odliczanie widoczności splasha dopiero gdy logo jest gotowe
+  useEffect(() => {
+    if (!logoReady) return;
+
     const timerShrink = setTimeout(() => {
       setPhase('shrinking');
     }, 850);
 
-    // Faza 2: Po animacji kurczenia logo i zanikania tła odblokuj aplikację
     const timerDone = setTimeout(() => {
       setPhase('done');
-      onFinish?.();
+      onFinishRef.current?.();
     }, 1450);
 
     return () => {
       clearTimeout(timerShrink);
       clearTimeout(timerDone);
     };
-  }, [onFinish]);
+  }, [logoReady]);
 
   const handleSkip = () => {
     setPhase('done');
-    onFinish?.();
+    onFinishRef.current?.();
   };
 
   if (phase === 'done') {
@@ -57,19 +74,28 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
 
       {/* Kontener z logo - wycentrowany, płynnie kurczący się i znikający ku górze */}
       <div
-        className={`relative z-10 flex flex-col items-center justify-center transition-all duration-600 cubic-bezier(0.4,0,0.2,1) transform ${
+        className={`relative z-10 flex flex-col items-center justify-center transition-all duration-600 ease-[cubic-bezier(0.4,0,0.2,1)] transform ${
           isShrinking
             ? 'scale-[0.38] -translate-y-20 opacity-0'
-            : 'scale-100 translate-y-0 opacity-100 animate-in fade-in zoom-in-90 duration-350'
+            : 'scale-100 translate-y-0 opacity-100'
         }`}
       >
         <img
-          src="/logo.png"
+          ref={imgRef}
+          src="./logo.png"
+          onLoad={() => setLogoReady(true)}
           onError={(e) => {
-            e.currentTarget.src = '/logo.jpg';
+            if (!e.currentTarget.dataset.fallbackApplied) {
+              e.currentTarget.dataset.fallbackApplied = '1';
+              e.currentTarget.src = './logo.jpg';
+              return;
+            }
+            setLogoReady(true);
           }}
           alt="Rzeźnik"
-          className="w-full max-w-[220px] sm:max-w-[260px] h-auto object-contain select-none"
+          loading="eager"
+          decoding="sync"
+          className="w-[220px] sm:w-[260px] h-auto aspect-[780/435] object-contain select-none"
         />
       </div>
     </div>
