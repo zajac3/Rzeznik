@@ -14,14 +14,16 @@ Aplikacja została zaprojektowana przede wszystkim na potrzeby własne, z nacisk
 - **Historia treningów** – przeglądanie wcześniejszych sesji i ich podsumowań.
 - **Notatki** – dodawanie własnych uwag do treningów.
 
-### Kalendarz i planowanie
-![Plan](https://github.com/user-attachments/assets/713d2c46-e0e9-418b-9643-e209871663bd)
 
-### Rejestrowanie treningu
-![Trening](https://github.com/user-attachments/assets/c2c6dc72-2d1b-4505-8aba-5fa65a6d201d)
+## Wygląd aplikacji
 
-### Statystyki i rekordy
-![Statystyki](https://github.com/user-attachments/assets/31c3fb41-6a5c-4410-8f79-80128c0573b0)
+Poniżej przedstawiono trzy główne widoki aplikacji: kalendarz treningowy, rejestrowanie treningu oraz statystyki postępów.
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/713d2c46-e0e9-418b-9643-e209871663bd" width="28%" alt="Kalendarz treningowy">
+  <img src="https://github.com/user-attachments/assets/c2c6dc72-2d1b-4505-8aba-5fa65a6d201d" width="28%" alt="Rejestrowanie treningu">
+  <img src="https://github.com/user-attachments/assets/31c3fb41-6a5c-4410-8f79-80128c0573b0" width="28%" alt="Statystyki i rekordy">
+</p>
 
 ## Technologie
 
