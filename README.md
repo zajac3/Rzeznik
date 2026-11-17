@@ -15,13 +15,13 @@ Aplikacja została zaprojektowana przede wszystkim na potrzeby własne, z nacisk
 - **Notatki** – dodawanie własnych uwag do treningów.
 
 ### Kalendarz i planowanie
-![Plan](screenshots/plan.png)
+![Plan](https://github.com/user-attachments/assets/713d2c46-e0e9-418b-9643-e209871663bd)
 
 ### Rejestrowanie treningu
-![Trening](screenshots/trening.png)
+![Trening](https://github.com/user-attachments/assets/c2c6dc72-2d1b-4505-8aba-5fa65a6d201d)
 
 ### Statystyki i rekordy
-![Statystyki](screenshots/statystyki.png)
+![Statystyki](https://github.com/user-attachments/assets/31c3fb41-6a5c-4410-8f79-80128c0573b0)
 
 ## Technologie
 
