@@ -17,7 +17,13 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({ activeTab, onSelectT
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t-2 border-zinc-800 bg-gradient-to-t from-black via-[#0d0d10] to-[#121215]/95 backdrop-blur-md shadow-2xl shadow-black font-sans">
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-40 border-t-2 border-zinc-800 bg-gradient-to-t from-black via-[#0d0d10] to-[#121215]/95 backdrop-blur-md shadow-2xl shadow-black font-sans"
+      style={{
+        transform: 'translate3d(0, 0, 0)',
+        WebkitTransform: 'translate3d(0, 0, 0)',
+      }}
+    >
       <style>{`
         @keyframes subtleRedPulse {
           0%, 100% {
@@ -51,18 +57,15 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({ activeTab, onSelectT
         }
         .active-tab-icon {
           animation: subtleRedPulse 2.8s ease-in-out infinite;
-          will-change: filter, opacity;
         }
         .active-tab-text {
           animation: subtleTextPulse 2.8s ease-in-out infinite;
-          will-change: opacity, text-shadow;
         }
         .active-tab-aura {
           animation: tabAuraPulse 2.8s ease-in-out infinite;
-          will-change: transform, opacity;
         }
       `}</style>
-      <div className="mx-auto flex max-w-xl items-center justify-around px-2 py-1.5 pb-safe">
+      <div className="mx-auto flex max-w-xl items-center justify-around px-2 py-1.5">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.key;
@@ -70,24 +73,25 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({ activeTab, onSelectT
           return (
             <button
               key={tab.key}
+              type="button"
               onClick={() => onSelectTab(tab.key)}
-              className={`relative flex flex-1 flex-col items-center justify-center py-1 transition-all cursor-pointer outline-none focus:outline-none select-none ${
+              className={`relative flex flex-1 min-w-0 flex-col items-center justify-center py-1 transition-colors cursor-pointer outline-none focus:outline-none select-none ${
                 isActive ? 'text-red-500' : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
               {/* Delikatna, ledwo zauważalna poświata pod wybraną zakładką */}
               {isActive && (
-                <div className="absolute inset-0 m-auto h-8 w-10 rounded-full bg-red-600/15 blur-md pointer-events-none active-tab-aura" />
+                <div className="absolute inset-0 z-0 m-auto h-8 w-10 rounded-full bg-red-600/15 blur-md pointer-events-none active-tab-aura" />
               )}
               <Icon
-                className={`h-5 w-5 transition-transform ${
+                className={`relative z-10 h-5 w-5 transition-transform ${
                   isActive
                     ? 'scale-105 stroke-[2.2] text-red-500 active-tab-icon'
                     : 'stroke-[1.8]'
                 }`}
               />
               <span
-                className={`mt-1 text-[11px] tracking-tight transition-all ${
+                className={`relative z-10 mt-1 text-[11px] tracking-tight whitespace-nowrap ${
                   isActive
                     ? 'font-bold text-red-500 active-tab-text'
                     : 'font-medium text-zinc-500'

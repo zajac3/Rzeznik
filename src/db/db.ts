@@ -158,6 +158,21 @@ export interface RecurringCycle {
   created_at: string;
 }
 
+export interface MeasurementType {
+  id?: number;
+  name: string; // np. "Obwód bicepsa", "Obwód klatki"
+  unit: string; // np. "cm", "mm", "%"
+  created_at: string;
+}
+
+export interface MeasurementEntry {
+  id?: number;
+  type_id: number;
+  date: string; // YYYY-MM-DD
+  value: number;
+  created_at?: string;
+}
+
 export class PakomatDB extends Dexie {
   exercises!: Table<Exercise, number>;
   workoutDays!: Table<WorkoutDay, number>;
@@ -168,6 +183,8 @@ export class PakomatDB extends Dexie {
   routineExercises!: Table<RoutineExercise, number>;
   manual1RMs!: Table<Manual1RMEntry, number>;
   recurringCycles!: Table<RecurringCycle, number>;
+  measurementTypes!: Table<MeasurementType, number>;
+  measurementEntries!: Table<MeasurementEntry, number>;
 
   constructor() {
     super('PakomatDB');
@@ -193,6 +210,10 @@ export class PakomatDB extends Dexie {
     this.version(6).stores({
       workoutDays: '++id, &date, status, routine_day_id, cycle_id',
       recurringCycles: '++id, routine_day_id, created_at',
+    });
+    this.version(7).stores({
+      measurementTypes: '++id, name, created_at',
+      measurementEntries: '++id, type_id, date',
     });
   }
 }
@@ -1662,6 +1683,71 @@ export async function deleteBodyWeight(id: number): Promise<void> {
   await db.bodyWeights.delete(id);
 }
 
+// --- Custom Body Measurements Management ---
+export async function createMeasurementType(name: string, unit: string = 'cm'): Promise<number> {
+  const cleanName = name.trim();
+  const cleanUnit = unit.trim() || 'cm';
+  if (!cleanName) {
+    throw new Error('Podaj nazwę pomiaru.');
+  }
+  const existing = await db.measurementTypes
+    .filter((t) => t.name.trim().toLowerCase() === cleanName.toLowerCase())
+    .first();
+  if (existing) {
+    throw new Error('Pomiar o takiej nazwie już istnieje.');
+  }
+  return await db.measurementTypes.add({
+    name: cleanName,
+    unit: cleanUnit,
+    created_at: new Date().toISOString(),
+  });
+}
+
+export async function deleteMeasurementType(typeId: number): Promise<void> {
+  await db.transaction('rw', [db.measurementTypes, db.measurementEntries], async () => {
+    await db.measurementEntries.where('type_id').equals(typeId).delete();
+    await db.measurementTypes.delete(typeId);
+  });
+}
+
+export async function addOrUpdateMeasurementEntry(
+  typeId: number,
+  date: string,
+  value: number
+): Promise<void> {
+  const rounded = Math.round(value * 10) / 10;
+  const existing = await db.measurementEntries
+    .where('type_id')
+    .equals(typeId)
+    .filter((e) => e.date === date)
+    .first();
+  if (existing && existing.id) {
+    await db.measurementEntries.update(existing.id, {
+      value: rounded,
+      created_at: new Date().toISOString(),
+    });
+  } else {
+    await db.measurementEntries.add({
+      type_id: typeId,
+      date,
+      value: rounded,
+      created_at: new Date().toISOString(),
+    });
+  }
+}
+
+export async function updateMeasurementEntry(id: number, value: number): Promise<void> {
+  const rounded = Math.round(value * 10) / 10;
+  await db.measurementEntries.update(id, {
+    value: rounded,
+    created_at: new Date().toISOString(),
+  });
+}
+
+export async function deleteMeasurementEntry(id: number): Promise<void> {
+  await db.measurementEntries.delete(id);
+}
+
 // --- Backup & Restore (JSON) ---
 export interface PakomatBackupData {
   version: number;
@@ -1675,6 +1761,8 @@ export interface PakomatBackupData {
   routineDays?: RoutineDay[];
   routineExercises?: RoutineExercise[];
   manual1RMs?: Manual1RMEntry[];
+  measurementTypes?: MeasurementType[];
+  measurementEntries?: MeasurementEntry[];
 }
 
 export async function exportDatabaseToJson(): Promise<string> {
@@ -1686,9 +1774,11 @@ export async function exportDatabaseToJson(): Promise<string> {
   const routineDays = await db.routineDays.toArray();
   const routineExercises = await db.routineExercises.toArray();
   const manual1RMs = await db.manual1RMs.toArray();
+  const measurementTypes = await db.measurementTypes.toArray();
+  const measurementEntries = await db.measurementEntries.toArray();
 
   const backup: PakomatBackupData = {
-    version: 4,
+    version: 5,
     exportedAt: new Date().toISOString(),
     appName: 'Pakomat',
     exercises,
@@ -1699,6 +1789,8 @@ export async function exportDatabaseToJson(): Promise<string> {
     routineDays,
     routineExercises,
     manual1RMs,
+    measurementTypes,
+    measurementEntries,
   };
 
   return JSON.stringify(backup, null, 2);
@@ -1722,6 +1814,8 @@ export async function importDatabaseFromJson(jsonString: string, mode: 'replace'
   const routines = parsed.routineDays || [];
   const routineExs = parsed.routineExercises || [];
   const manual1RMs = parsed.manual1RMs || [];
+  const measurementTypes = parsed.measurementTypes || [];
+  const measurementEntries = parsed.measurementEntries || [];
 
   if (mode === 'replace') {
     await db.transaction(
@@ -1735,6 +1829,8 @@ export async function importDatabaseFromJson(jsonString: string, mode: 'replace'
         db.routineDays,
         db.routineExercises,
         db.manual1RMs,
+        db.measurementTypes,
+        db.measurementEntries,
       ],
       async () => {
         await db.loggedSets.clear();
@@ -1745,6 +1841,8 @@ export async function importDatabaseFromJson(jsonString: string, mode: 'replace'
         await db.routineDays.clear();
         await db.routineExercises.clear();
         await db.manual1RMs.clear();
+        await db.measurementEntries.clear();
+        await db.measurementTypes.clear();
 
         await db.exercises.bulkAdd(parsed.exercises);
         await db.workoutDays.bulkAdd(parsed.workoutDays);
@@ -1762,6 +1860,12 @@ export async function importDatabaseFromJson(jsonString: string, mode: 'replace'
         if (manual1RMs.length > 0) {
           await db.manual1RMs.bulkAdd(manual1RMs);
         }
+        if (measurementTypes.length > 0) {
+          await db.measurementTypes.bulkAdd(measurementTypes);
+        }
+        if (measurementEntries.length > 0) {
+          await db.measurementEntries.bulkAdd(measurementEntries);
+        }
       }
     );
   } else {
@@ -1777,6 +1881,8 @@ export async function importDatabaseFromJson(jsonString: string, mode: 'replace'
         db.routineDays,
         db.routineExercises,
         db.manual1RMs,
+        db.measurementTypes,
+        db.measurementEntries,
       ],
       async () => {
         for (const ex of parsed.exercises) {
@@ -1808,6 +1914,41 @@ export async function importDatabaseFromJson(jsonString: string, mode: 'replace'
         for (const m of manual1RMs) {
           await db.manual1RMs.add(m);
         }
+
+        const typeIdMap = new Map<number, number>();
+        for (const mt of measurementTypes) {
+          const exists = await db.measurementTypes
+            .filter((t) => t.name.trim().toLowerCase() === mt.name.trim().toLowerCase())
+            .first();
+          if (exists && exists.id && mt.id !== undefined) {
+            typeIdMap.set(mt.id, exists.id);
+          } else if (!exists) {
+            const newId = await db.measurementTypes.add({
+              name: mt.name,
+              unit: mt.unit,
+              created_at: mt.created_at || new Date().toISOString(),
+            });
+            if (mt.id !== undefined) {
+              typeIdMap.set(mt.id, newId);
+            }
+          }
+        }
+        for (const me of measurementEntries) {
+          const mappedTypeId = typeIdMap.get(me.type_id) ?? me.type_id;
+          const exists = await db.measurementEntries
+            .where('type_id')
+            .equals(mappedTypeId)
+            .filter((e) => e.date === me.date)
+            .first();
+          if (!exists) {
+            await db.measurementEntries.add({
+              type_id: mappedTypeId,
+              date: me.date,
+              value: me.value,
+              created_at: me.created_at || new Date().toISOString(),
+            });
+          }
+        }
       }
     );
   }
@@ -1833,6 +1974,8 @@ export async function clearAllUserData(): Promise<void> {
       db.routineDays,
       db.routineExercises,
       db.recurringCycles,
+      db.measurementTypes,
+      db.measurementEntries,
     ],
     async () => {
       await db.loggedSets.clear();
@@ -1842,6 +1985,8 @@ export async function clearAllUserData(): Promise<void> {
       await db.routineDays.clear();
       await db.routineExercises.clear();
       await db.recurringCycles.clear();
+      await db.measurementEntries.clear();
+      await db.measurementTypes.clear();
     }
   );
 }

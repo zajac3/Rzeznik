@@ -324,9 +324,9 @@ export const WorkoutHistoryView: React.FC = () => {
 
   if (sessions.length === 0) {
     return (
-      <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-6 border-2 border-zinc-700/80 text-center space-y-3 shadow-lg shadow-black/50">
+      <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-6 border border-zinc-800/80 text-center space-y-3 shadow-md shadow-black/40">
         <div className="flex justify-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-none bg-black border border-zinc-800 text-red-500">
+          <div className="flex h-12 w-12 items-center justify-center rounded-none bg-black/60 border border-zinc-800/80 text-red-500">
             <Calendar className="h-6 w-6" />
           </div>
         </div>
@@ -343,7 +343,7 @@ export const WorkoutHistoryView: React.FC = () => {
   return (
     <div className="space-y-3 font-sans">
       {/* Pasek filtrowania po szablonie oraz sortowania */}
-      <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-3 sm:p-4 border-2 border-zinc-700/80 space-y-3 shadow-lg shadow-black/50">
+      <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-3 sm:p-4 border border-zinc-800/80 space-y-3 shadow-md shadow-black/40">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           {/* Wybór konkretnego szablonu */}
           <div>
@@ -461,7 +461,7 @@ export const WorkoutHistoryView: React.FC = () => {
 
       {/* Komunikat o braku wyników dla wybranego szablonu */}
       {filteredAndSortedSessions.length === 0 ? (
-        <div className="rounded-none bg-gradient-to-b from-zinc-900 to-black p-6 border-2 border-zinc-800 text-center space-y-2">
+        <div className="rounded-none bg-gradient-to-b from-zinc-900 to-zinc-950 p-6 border border-zinc-800/80 text-center space-y-2 shadow-md shadow-black/40">
           <p className="text-xs font-bold text-zinc-300 uppercase">
             Brak zapisanych treningów dla szablonu „{selectedTemplateFilter}”
           </p>
@@ -483,7 +483,7 @@ export const WorkoutHistoryView: React.FC = () => {
             return (
               <div
                 key={session.id}
-                className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 border-2 border-zinc-700/80 shadow-lg shadow-black/50 transition-all overflow-hidden"
+                className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 border border-zinc-800/80 shadow-md shadow-black/40 transition-all overflow-hidden"
               >
                 {/* Nagłówek karty treningu (klikalny) */}
                 <button
@@ -565,7 +565,7 @@ export const WorkoutHistoryView: React.FC = () => {
                         </div>
                       );
                     })()}
-                    <div className="flex items-center justify-center h-8 w-8 rounded-none bg-black border border-zinc-800 text-zinc-400 shrink-0">
+                    <div className="flex items-center justify-center h-8 w-8 rounded-none text-zinc-400 shrink-0">
                       <ChevronDown
                         className={`h-4 w-4 transition-transform duration-200 ${
                           isExpanded ? 'transform rotate-180 text-red-500' : ''
@@ -577,22 +577,24 @@ export const WorkoutHistoryView: React.FC = () => {
 
                 {/* Rozwijana sekcja szczegółów (Accordion) */}
                 {isExpanded && (
-                  <div className="border-t-2 border-zinc-800/90 p-4 sm:p-5 bg-black/40 space-y-4 animate-in fade-in duration-150">
-                    <div className="space-y-4">
+                  <div className="px-4 sm:px-5 pb-4 sm:pb-5 space-y-3.5 animate-in fade-in duration-150">
+                    <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
+                    <div>
                       {session.tasks.map((task, taskIdx) => (
-                        <div
-                          key={task.id}
-                          className="rounded-none bg-gradient-to-b from-zinc-950 to-black p-3.5 border border-zinc-800/90 space-y-2.5"
-                        >
-                          {/* Nagłówek ćwiczenia z ikoną partii */}
-                          <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-800/80">
-                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                              <div className="flex h-7 w-7 items-center justify-center rounded-none bg-black border border-zinc-800 shrink-0 overflow-hidden">
-                                {getCategoryIconElement(
-                                  task.muscleGroup,
-                                  'w-5 h-5 object-contain opacity-85'
-                                )}
-                              </div>
+                        <React.Fragment key={task.id}>
+                          {taskIdx > 0 && (
+                            <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
+                          )}
+                          <div className="py-3 first:pt-1 space-y-2">
+                            {/* Nagłówek ćwiczenia z ikoną partii */}
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-none bg-black/80 border border-zinc-800/90 shrink-0 overflow-hidden">
+                                  {getCategoryIconElement(
+                                    task.muscleGroup,
+                                    'w-5 h-5 object-contain opacity-85'
+                                  )}
+                                </div>
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-1.5 min-w-0">
                                   <span className="text-[11px] font-bold text-zinc-500 shrink-0">
@@ -676,7 +678,7 @@ export const WorkoutHistoryView: React.FC = () => {
                           </div>
 
                           {/* Lista zarejestrowanych serii (ciężar, powtórzenia, RIR) */}
-                          <div className="space-y-1.5">
+                          <div className="divide-y divide-zinc-800/50 pl-1">
                             {task.sets.map((set, setIdx) => {
                               const pr = allTimePRs.get(task.exerciseId);
                               const isPR = Boolean(
@@ -686,7 +688,7 @@ export const WorkoutHistoryView: React.FC = () => {
                               return (
                                 <div
                                   key={set.id ?? setIdx}
-                                  className="flex items-center justify-between rounded-none bg-black/80 px-3 py-2 border border-zinc-900 hover:border-zinc-800 transition-colors"
+                                  className="flex items-center justify-between px-1.5 py-2 hover:bg-zinc-900/30 transition-colors"
                                 >
                                   <div className="flex items-center gap-2 sm:gap-3">
                                     <span className="text-[11px] font-bold text-zinc-500 w-5">
@@ -714,23 +716,29 @@ export const WorkoutHistoryView: React.FC = () => {
                             })}
                           </div>
                         </div>
+                        </React.Fragment>
                       ))}
                     </div>
 
                     {/* Notatka z treningu */}
                     {session.notes && session.notes.trim().length > 0 && (
-                      <div className="rounded-none bg-black/60 border border-zinc-800 p-3 space-y-1">
-                        <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider block font-sans">
-                          Notatka z treningu:
-                        </span>
-                        <p className="text-xs text-zinc-300 font-sans whitespace-pre-wrap">
-                          {session.notes}
-                        </p>
+                      <div className="space-y-1.5">
+                        <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
+                        <div className="pt-2 space-y-1">
+                          <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider block font-sans">
+                            Notatka z treningu:
+                          </span>
+                          <p className="text-xs text-zinc-300 font-sans whitespace-pre-wrap leading-relaxed">
+                            {session.notes}
+                          </p>
+                        </div>
                       </div>
                     )}
 
                     {/* Akcja usunięcia treningu z historii */}
-                    <div className="pt-3 border-t-2 border-zinc-800 flex items-center justify-between">
+                    <div className="space-y-3">
+                      <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
+                      <div className="flex items-center justify-between pt-0.5">
                       <span className="text-[11px] text-zinc-500">
                         Zarejestrowana sesja #{session.id}
                       </span>
@@ -764,6 +772,7 @@ export const WorkoutHistoryView: React.FC = () => {
                           <span>Usuń trening</span>
                         </button>
                       )}
+                      </div>
                     </div>
                   </div>
                 )}

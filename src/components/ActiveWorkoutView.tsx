@@ -33,6 +33,7 @@ import {
   getHistoricalPRs,
   isSetNewPR,
   calculateEpley1RM,
+  getExerciseTrend,
   getWorkoutTrend,
   type FullDayDetails,
   type FullTaskDetails,
@@ -48,7 +49,7 @@ import {
   formatDateToISO,
 } from '../utils/dateUtils';
 import { AddExerciseModal } from './AddExerciseModal';
-import { getCategoryIcon } from '../utils/categoryIcons';
+import { CategoryIcon } from '../utils/categoryIcons';
 
 const getSetsWord = (count: number) => {
   if (count === 1) return 'seria';
@@ -76,6 +77,7 @@ export const ActiveWorkoutView: React.FC = () => {
   const [isAddExtraOpen, setIsAddExtraOpen] = useState(false);
   const [isSelectPlanModalOpen, setIsSelectPlanModalOpen] = useState(false);
   const [isConfirmDeleteSession, setIsConfirmDeleteSession] = useState(false);
+  const [isWorkoutMenuOpen, setIsWorkoutMenuOpen] = useState(false);
   const [notesInput, setNotesInput] = useState<string>('');
   const [isNotesSaved, setIsNotesSaved] = useState<boolean>(false);
   const [isNotesExpanded, setIsNotesExpanded] = useState<boolean>(false);
@@ -88,6 +90,7 @@ export const ActiveWorkoutView: React.FC = () => {
 
   useEffect(() => {
     setIsConfirmDeleteSession(false);
+    setIsWorkoutMenuOpen(false);
     setIsConfirmDeleteNote(false);
     setIsNotesExpanded(false);
     setExpandedTaskIds(new Set());
@@ -322,20 +325,6 @@ export const ActiveWorkoutView: React.FC = () => {
   const hasExercises = Boolean(dayData?.tasks && dayData.tasks.length > 0);
   const hasTemplate = Boolean(dayData?.routine_day_id || (dayData?.routine_day_name && dayData.routine_day_name.trim() !== ''));
 
-  // Bazowa liczba zaplanowanych serii z szablonu planu (jeśli przypisano szablon do tego dnia)
-  const templateTargetSets = useLiveQuery(async () => {
-    if (!dayData?.routine_day_id) return 0;
-    const routineExs = await db.routineExercises
-      .where('routine_day_id')
-      .equals(dayData.routine_day_id)
-      .toArray();
-    return routineExs.reduce((acc, re) => acc + (re.target_sets || 3), 0);
-  }, [dayData?.routine_day_id]) ?? 0;
-
-  // Śledzenie szczytowej liczby zaplanowanych serii w sesji, aby usunięcie wykonanego ćwiczenia
-  // nie kurczyło mianownika i cofało pasek dokładnie o taką samą wartość procentową
-  const [sessionPeakTargets, setSessionPeakTargets] = useState<Record<string, number>>({});
-
   // Zadania zaplanowane w ramach planu (ćwiczenia dodane poza planem nie wpływają na pasek postępu)
   const plannedTasks = React.useMemo(() => {
     return (dayData?.tasks ?? []).filter((t) => !t.is_extra);
@@ -347,18 +336,6 @@ export const ActiveWorkoutView: React.FC = () => {
       return acc + Math.max(planned, t.sets?.length || 0);
     }, 0);
   }, [plannedTasks]);
-
-  useEffect(() => {
-    if (currentComputedTarget > 0) {
-      setSessionPeakTargets((prev) => {
-        const prevVal = prev[selectedDate] || 0;
-        if (currentComputedTarget > prevVal) {
-          return { ...prev, [selectedDate]: currentComputedTarget };
-        }
-        return prev;
-      });
-    }
-  }, [selectedDate, currentComputedTarget]);
 
   // Stan zwijania / rozwijania całego treningu
   const [isEntireWorkoutCollapsed, setIsEntireWorkoutCollapsed] = useState<boolean>(false);
@@ -456,17 +433,30 @@ export const ActiveWorkoutView: React.FC = () => {
     };
   }, [activeQuickMoveIndex]);
 
+  // Zamknięcie menu kontekstowego treningu po kliknięciu poza nim
+  useEffect(() => {
+    if (!isWorkoutMenuOpen) return;
+    const handleDocumentClick = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest('[data-workout-menu-wrapper="true"]')) {
+        setIsWorkoutMenuOpen(false);
+        setIsConfirmDeleteSession(false);
+      }
+    };
+    document.addEventListener('pointerdown', handleDocumentClick);
+    return () => {
+      document.removeEventListener('pointerdown', handleDocumentClick);
+    };
+  }, [isWorkoutMenuOpen]);
+
   // Zresetuj otwarte menu przy zmianie daty lub zwinięciu treningu
   useEffect(() => {
     setActiveQuickMoveIndex(null);
+    setIsWorkoutMenuOpen(false);
+    setIsConfirmDeleteSession(false);
   }, [selectedDate, isEntireWorkoutCollapsed]);
   const totalCompletedSets = plannedTasks.reduce((acc, t) => acc + (t.sets?.length || 0), 0);
-  const baselineTarget = Math.max(
-    templateTargetSets,
-    sessionPeakTargets[selectedDate] || 0,
-    currentComputedTarget
-  );
-  const totalTargetSets = baselineTarget;
+  const totalTargetSets = currentComputedTarget;
 
   const progressPercent = totalTargetSets > 0 && totalCompletedSets > 0
     ? Math.min(100, Math.round((totalCompletedSets / totalTargetSets) * 100))
@@ -579,7 +569,7 @@ export const ActiveWorkoutView: React.FC = () => {
       </div>
 
       {/* 2. GŁÓWNA RAMKA TRENINGU */}
-      <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 shadow-lg shadow-black/50 space-y-3.5">
+      <div className="rounded-none bg-gradient-to-b from-[#141417] via-[#0e0e11] to-[#08080a] p-4 sm:p-5 border-2 border-zinc-700/80 shadow-lg shadow-black/50 space-y-3.5">
         <div>
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 bg-gradient-to-r from-red-600 to-red-800"></div>
@@ -587,55 +577,92 @@ export const ActiveWorkoutView: React.FC = () => {
               {formatPolishFriendlyDate(selectedDate)}
             </span>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-2 mt-1">
-            <h2 className="text-base sm:text-lg font-bold text-white tracking-wider uppercase">
-              {dayData?.routine_day_name || 'Nieprzypisany trening'}
-            </h2>
-            <div className="flex items-center gap-2">
-              {/* Opcja: Usuń trening */}
+          <div className="flex items-center justify-between gap-2 mt-1">
+            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+              {/* Menu kontekstowe (3 kropki) z lewej strony nazwy szablonu */}
               {(dayData?.routine_day_name || (dayData?.tasks && dayData.tasks.length > 0)) && (
-                isConfirmDeleteSession ? (
-                  <div className="flex items-center gap-2 ml-1">
-                    <span className="text-xs text-zinc-300">Usunąć trening?</span>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        await deleteWorkoutSessionByDate(selectedDate);
-                        setSessionPeakTargets((prev) => {
-                          const next = { ...prev };
-                          delete next[selectedDate];
-                          return next;
-                        });
-                        setIsConfirmDeleteSession(false);
-                      }}
-                      className="rounded-none bg-red-700 hover:bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white uppercase cursor-pointer"
-                    >
-                      Tak, usuń
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsConfirmDeleteSession(false)}
-                      className="rounded-none bg-black border border-zinc-800 px-2 py-0.5 text-xs text-zinc-400 hover:text-white cursor-pointer"
-                    >
-                      Anuluj
-                    </button>
-                  </div>
-                ) : (
+                <div className="relative shrink-0 -ml-1.5 -mr-0.5" data-workout-menu-wrapper="true">
                   <button
                     type="button"
-                    onClick={() => setIsConfirmDeleteSession(true)}
-                    className="text-red-500 hover:text-red-400 font-bold uppercase text-xs border-b border-red-900 pb-0.5 ml-1 cursor-pointer tracking-wider"
-                    title="Usuń ten trening z bazy i historii"
+                    onClick={() => {
+                      setActiveQuickMoveIndex(null);
+                      setIsWorkoutMenuOpen((prev) => {
+                        const next = !prev;
+                        if (!next) setIsConfirmDeleteSession(false);
+                        return next;
+                      });
+                    }}
+                    className="flex items-center justify-center h-7 w-5 rounded-none transition-colors cursor-pointer select-none shrink-0 outline-none focus:outline-none text-zinc-500 hover:text-white"
+                    title="Opcje treningu"
+                    aria-label="Opcje treningu"
                   >
-                    Usuń trening
+                    <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                      <circle cx="12" cy="5" r="2.1" />
+                      <circle cx="12" cy="12" r="2.1" />
+                      <circle cx="12" cy="19" r="2.1" />
+                    </svg>
                   </button>
-                )
+
+                  {isWorkoutMenuOpen && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute left-0 top-8 z-30 min-w-[180px] bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 border-2 border-zinc-700 p-1.5 shadow-2xl space-y-1 animate-in fade-in zoom-in-95 duration-100"
+                    >
+                      {isConfirmDeleteSession ? (
+                        <div className="p-1.5 space-y-2">
+                          <span className="block text-xs font-semibold text-zinc-200">
+                            Usunąć cały trening?
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await deleteWorkoutSessionByDate(selectedDate);
+                                setIsConfirmDeleteSession(false);
+                                setIsWorkoutMenuOpen(false);
+                              }}
+                              className="flex-1 rounded-none bg-red-700 hover:bg-red-600 px-2 py-1 text-[11px] font-bold text-white uppercase cursor-pointer"
+                            >
+                              Tak, usuń
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsConfirmDeleteSession(false);
+                                setIsWorkoutMenuOpen(false);
+                              }}
+                              className="rounded-none bg-black border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400 hover:text-white cursor-pointer"
+                            >
+                              Anuluj
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setIsConfirmDeleteSession(true)}
+                          className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs font-bold text-rose-400 hover:text-rose-300 hover:bg-red-950/50 transition-colors cursor-pointer"
+                          title="Usuń ten trening z bazy i historii"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                          <span>Usuń trening</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
 
-              {/* Wskaźnik progresu całego treningu na podstawie sumy strzałek z ćwiczeń */}
+              <h2 className="text-base sm:text-lg font-bold text-white tracking-wider uppercase truncate">
+                {dayData?.routine_day_name || 'Nieprzypisany trening'}
+              </h2>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Wskaźnik progresu całego treningu po prawej stronie przy przycisku zwijania */}
               {workoutTrend && (
                 <div
-                  className={`flex items-center justify-center h-7 w-7 shrink-0 ${
+                  className={`flex items-center justify-center w-5 h-7 shrink-0 ${
                     workoutTrend.trend === 'up'
                       ? 'text-emerald-400'
                       : workoutTrend.trend === 'down'
@@ -665,7 +692,7 @@ export const ActiveWorkoutView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsEntireWorkoutCollapsed((prev) => !prev)}
-                  className="flex items-center justify-center h-7 w-7 rounded-none border border-zinc-800 bg-black text-zinc-400 hover:text-white hover:border-zinc-700 transition-colors cursor-pointer select-none shrink-0 outline-none focus:outline-none"
+                  className="flex items-center justify-center h-7 w-7 rounded-none border border-zinc-800 bg-black text-zinc-400 hover:text-white hover:border-zinc-700 cursor-pointer select-none shrink-0 outline-none focus:outline-none"
                   title={isEntireWorkoutCollapsed ? 'Rozwiń trening' : 'Zwiń trening'}
                   aria-label={isEntireWorkoutCollapsed ? 'Rozwiń trening' : 'Zwiń trening'}
                 >
@@ -697,17 +724,17 @@ export const ActiveWorkoutView: React.FC = () => {
           </div>
         )}
 
-        {/* ZWINIĘTY TRENING LUB LISTA ĆWICZEŃ */}
-        {isEntireWorkoutCollapsed && hasExercises ? (
+        {/* ZWINIĘTY TRENING */}
+        {isEntireWorkoutCollapsed && hasExercises && (
           <div
             onClick={() => setIsEntireWorkoutCollapsed(false)}
-            className="p-3 sm:p-4 bg-black/60 border border-zinc-800 hover:border-zinc-700 transition-colors cursor-pointer group select-none"
+            className="p-3 sm:p-4 bg-black/60 border border-zinc-800 hover:border-zinc-700 cursor-pointer group select-none"
             title="Kliknij, aby rozwinąć trening"
           >
             <div className="grid grid-cols-2 gap-2 sm:gap-3">
               {/* Box 1: Ćwiczenia */}
               <div className="flex items-center gap-2.5 sm:gap-3 bg-[#0d0d10] border border-zinc-800/90 p-2.5 sm:p-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-none bg-black border border-zinc-800 text-zinc-400 group-hover:text-red-500 transition-colors shrink-0">
+                <div className="flex h-8 w-8 items-center justify-center rounded-none bg-black border border-zinc-800 text-zinc-400 group-hover:text-red-500 shrink-0">
                   <Dumbbell className="h-4 w-4" />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -722,7 +749,7 @@ export const ActiveWorkoutView: React.FC = () => {
 
               {/* Box 2: Serie */}
               <div className="flex items-center gap-2.5 sm:gap-3 bg-[#0d0d10] border border-zinc-800/90 p-2.5 sm:p-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-none bg-black border border-zinc-800 text-zinc-400 group-hover:text-red-500 transition-colors shrink-0">
+                <div className="flex h-8 w-8 items-center justify-center rounded-none bg-black border border-zinc-800 text-zinc-400 group-hover:text-red-500 shrink-0">
                   <Check className="h-4 w-4" />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -744,77 +771,96 @@ export const ActiveWorkoutView: React.FC = () => {
             {/* Cienki pasek postępu na dole */}
             <div className="mt-2.5 w-full h-1 bg-black border border-zinc-800/80 overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-red-900 via-red-600 to-red-500 transition-all duration-300"
+                className="h-full bg-gradient-to-r from-red-900 via-red-600 to-red-500"
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
           </div>
-        ) : (
-          hasExercises && (
-            <div className="space-y-3 pt-1">
+        )}
+
+        {/* LISTA ĆWICZEŃ (utrzymywana w DOM przez hidden przy zwinięciu, aby ikony nie odświeżały się i nie migotały) */}
+        {hasExercises && (
+          <div className={isEntireWorkoutCollapsed ? 'hidden' : 'relative -mx-2 sm:-mx-2.5 px-4 sm:px-5 py-0.5'}>
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 bg-black/40"
+              style={{
+                maskImage:
+                  'linear-gradient(to bottom, transparent, black 20px, black calc(100% - 20px), transparent), linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent)',
+                WebkitMaskImage:
+                  'linear-gradient(to bottom, transparent, black 20px, black calc(100% - 20px), transparent), linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent)',
+                maskComposite: 'intersect',
+                WebkitMaskComposite: 'source-in',
+              }}
+            />
+            <div className="relative">
               {dayData?.tasks.map((task, index) => (
-                <div
-                  key={task.id}
-                  data-exercise-index={index}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    if (draggedIndex !== null && dragOverIndex !== index) {
-                      setDragOverIndex(index);
-                    }
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    if (draggedIndex !== null && draggedIndex !== index) {
-                      handleReorderTasks(draggedIndex, index);
-                    }
-                    setDraggedIndex(null);
-                    setDragOverIndex(null);
-                  }}
-                  className={`relative transition-all duration-150 ${
-                    draggedIndex === index
-                      ? 'opacity-40 scale-[0.99] border-red-800'
-                      : dragOverIndex === index
-                      ? 'ring-2 ring-red-500 shadow-[0_0_15px_rgba(239,68,68,0.35)]'
-                      : ''
-                  }`}
-                >
-                  <ExerciseSessionCard
-                    task={task}
-                    index={index}
-                    totalTasks={dayData.tasks.length}
-                    priorPR={task.exercise_id ? priorPRs.get(task.exercise_id) : undefined}
-                    onDeleteExercise={() => handleDeleteTask(task.id)}
-                    isExpanded={task.id ? expandedTaskIds.has(task.id) : false}
-                    onToggleExpand={() => task.id && toggleTaskExpand(task.id)}
-                    isDragging={draggedIndex === index}
-                    onDragStartHandle={() => {
-                      setActiveQuickMoveIndex(null);
-                      setDraggedIndex(index);
+                <React.Fragment key={task.id}>
+                  {index > 0 && (
+                    <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-800/90 to-transparent" />
+                  )}
+                  <div
+                    data-exercise-index={index}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (draggedIndex !== null && dragOverIndex !== index) {
+                        setDragOverIndex(index);
+                      }
                     }}
-                    onDragEndHandle={() => {
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (draggedIndex !== null && draggedIndex !== index) {
+                        handleReorderTasks(draggedIndex, index);
+                      }
                       setDraggedIndex(null);
                       setDragOverIndex(null);
                     }}
-                    onTouchStartHandle={(e) => {
-                      setActiveQuickMoveIndex(null);
-                      handleTouchStart(e, index);
-                    }}
-                    onTouchMoveHandle={handleTouchMove}
-                    onTouchEndHandle={handleTouchEnd}
-                    onMoveTo={(targetIdx) => {
-                      handleReorderTasks(index, targetIdx);
-                      setActiveQuickMoveIndex(null);
-                    }}
-                    isQuickMoveOpen={activeQuickMoveIndex === index}
-                    onToggleQuickMove={() => {
-                      setActiveQuickMoveIndex((prev) => (prev === index ? null : index));
-                    }}
-                    onCloseQuickMove={() => setActiveQuickMoveIndex(null)}
-                  />
-                </div>
+                    className={`relative ${
+                      draggedIndex === index
+                        ? 'opacity-40 scale-[0.99]'
+                        : dragOverIndex === index
+                        ? 'bg-red-950/20 outline outline-1 outline-red-500/70'
+                        : ''
+                    }`}
+                  >
+                    <ExerciseSessionCard
+                      task={task}
+                      index={index}
+                      totalTasks={dayData.tasks.length}
+                      priorPR={task.exercise_id ? priorPRs.get(task.exercise_id) : undefined}
+                      onDeleteExercise={() => handleDeleteTask(task.id)}
+                      isExpanded={task.id ? expandedTaskIds.has(task.id) : false}
+                      onToggleExpand={() => task.id && toggleTaskExpand(task.id)}
+                      isDragging={draggedIndex === index}
+                      onDragStartHandle={() => {
+                        setActiveQuickMoveIndex(null);
+                        setDraggedIndex(index);
+                      }}
+                      onDragEndHandle={() => {
+                        setDraggedIndex(null);
+                        setDragOverIndex(null);
+                      }}
+                      onTouchStartHandle={(e) => {
+                        setActiveQuickMoveIndex(null);
+                        handleTouchStart(e, index);
+                      }}
+                      onTouchMoveHandle={handleTouchMove}
+                      onTouchEndHandle={handleTouchEnd}
+                      onMoveTo={(targetIdx) => {
+                        handleReorderTasks(index, targetIdx);
+                        setActiveQuickMoveIndex(null);
+                      }}
+                      isQuickMoveOpen={activeQuickMoveIndex === index}
+                      onToggleQuickMove={() => {
+                        setActiveQuickMoveIndex((prev) => (prev === index ? null : index));
+                      }}
+                      onCloseQuickMove={() => setActiveQuickMoveIndex(null)}
+                    />
+                  </div>
+                </React.Fragment>
               ))}
             </div>
-          )
+          </div>
         )}
 
         {/* PRZED DOŁEM I NOTATKI: TYLKO GDY TRENING ROZWINIĘTY */}
@@ -825,9 +871,9 @@ export const ActiveWorkoutView: React.FC = () => {
           <button
             type="button"
             onClick={() => setIsAddExtraOpen(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-none border-2 border-dashed border-zinc-800 bg-black/60 hover:bg-black/90 py-3 text-xs font-bold uppercase tracking-wider text-zinc-300 hover:border-red-700 hover:text-white transition-colors cursor-pointer"
+            className="flex w-full items-center justify-center gap-2 rounded-none border border-dashed border-zinc-800/90 bg-black/50 hover:bg-black/80 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 hover:border-red-800/70 hover:text-zinc-200 transition-colors cursor-pointer"
           >
-            <span className="text-base font-bold text-red-500 leading-none">+</span>
+            <span className="text-sm font-bold text-red-500/85 leading-none">+</span>
             <span>Dodaj ćwiczenie poza planem</span>
           </button>
         </div>
@@ -990,7 +1036,7 @@ export const ActiveWorkoutView: React.FC = () => {
         <div className="relative py-2 flex items-center justify-center">
           <div className="w-full border-t border-zinc-800" />
           <div className="absolute px-3 bg-[#09090b] flex items-center text-[10px] font-bold text-zinc-500 uppercase tracking-widest select-none">
-            <span>PODSUMOWANIE SESJI</span>
+            <span>PODSUMOWANIE</span>
           </div>
         </div>
       )}
@@ -1311,129 +1357,30 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
     await deleteLoggedSet(setId);
   };
 
-  const CategoryIcon = getCategoryIcon(task.exercise?.muscle_group);
+  const exerciseTrend = getExerciseTrend(task);
+  const isCompletedAllSets = targetSets > 0 && loggedSetsCount >= targetSets;
 
   return (
-    <div className={`rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 shadow-lg shadow-black/50 ${
-      isExpanded ? 'space-y-3' : ''
-    }`}>
-      {/* Nagłówek ćwiczenia z licznikiem serii - klikalny do zwijania / rozwijania */}
+    <div className={`py-3 ${isExpanded ? 'space-y-3' : ''}`}>
+      {/* Nagłówek ćwiczenia w uproszczonym układzie: ikona -> 3 kropki -> nazwa -> strzałka trendu -> X z Y -> > */}
       <div
         onClick={handleToggle}
-        className={`flex items-start justify-between gap-3 cursor-pointer select-none transition-colors group ${
-          isExpanded ? 'pb-3 border-b-2 border-zinc-800' : 'pb-0'
+        className={`flex items-center justify-between gap-2 cursor-pointer select-none group outline-none focus:outline-none ${
+          isExpanded ? 'pb-3 border-b border-zinc-800/80' : 'pb-0'
         }`}
       >
-        <div className="flex items-start gap-3 min-w-0 flex-1">
-          <div className="flex h-9 w-9 items-center justify-center rounded-none bg-black border border-zinc-800 shrink-0 mt-0.5 overflow-hidden">
-            <CategoryIcon className="w-6 h-6 object-contain opacity-85" />
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {/* Ikona partii mięśniowej */}
+          <div className="flex h-9 w-9 items-center justify-center rounded-none bg-black/90 border border-zinc-800/90 shrink-0 overflow-hidden">
+            <CategoryIcon muscleGroup={task.exercise?.muscle_group} className="w-6 h-6 object-contain opacity-90" />
           </div>
-          <div className="min-w-0 flex-1 flex flex-col justify-center gap-1.5">
-            <h4 className="text-sm font-bold text-white tracking-wide uppercase group-hover:text-red-400 transition-colors break-words leading-snug">
-              {task.exercise?.name ?? 'Ćwiczenie'}
-            </h4>
 
-            {/* Licznik serii oraz przycisk Usuń */}
-            <div className="flex flex-col gap-1.5 pt-0.5" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center gap-2">
-                {!task.is_extra && targetSets > 0 ? (
-                  loggedSetsCount >= targetSets ? (
-                    <span className="inline-flex items-center gap-1.5 h-6 rounded-none bg-red-950 border border-red-700 px-2 text-xs font-bold text-red-300 font-sans tracking-tight shrink-0">
-                      <Check className="h-3 w-3 stroke-[2.5]" />
-                      <span>{loggedSetsCount} z {targetSets} serii</span>
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center h-6 rounded-none bg-black border border-zinc-800 px-2 text-xs font-semibold text-zinc-300 font-sans tracking-tight shrink-0">
-                      <span>{loggedSetsCount} z {targetSets} serii</span>
-                    </span>
-                  )
-                ) : null}
-
-                {task.is_extra && (
-                  <span className="inline-flex items-center justify-center h-6 px-2 rounded-none bg-red-950/80 border border-red-800 text-[10px] font-bold text-red-300 uppercase tracking-wider shrink-0">
-                    POZA PLANEM
-                  </span>
-                )}
-
-                <button
-                  type="button"
-                  onClick={onDeleteExercise}
-                  className="inline-flex items-center gap-1 h-6 rounded-none border border-zinc-800 bg-black px-2 text-xs font-bold text-zinc-400 hover:border-red-900 hover:text-rose-400 transition-colors cursor-pointer shrink-0"
-                  title="Usuń to ćwiczenie z tego dnia treningowego"
-                >
-                  <Trash2 className="h-3 w-3" />
-                  <span>Usuń</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Z boku wskaźnik progresu objętości/RIR, uchwyt 3 pionowych kropek do przesuwania oraz strzałka zwijania / rozwijania */}
-        <div className="relative flex items-center gap-1.5 shrink-0 self-start sm:self-center mt-1 sm:mt-0" onClick={(e) => e.stopPropagation()}>
-          {task.sets.length > 0 &&
-            task.previousTonnage !== null &&
-            task.previousTonnage !== undefined &&
-            task.previousTonnage > 0 && (() => {
-              const isVolumeHigher = task.totalTonnage > task.previousTonnage;
-              const isVolumeLower = task.totalTonnage < task.previousTonnage;
-              const isRirHigher =
-                !isVolumeHigher &&
-                !isVolumeLower &&
-                task.avgRir !== null &&
-                task.avgRir !== undefined &&
-                task.previousAvgRir !== null &&
-                task.previousAvgRir !== undefined &&
-                task.avgRir > task.previousAvgRir;
-              const isRirLower =
-                !isVolumeHigher &&
-                !isVolumeLower &&
-                task.avgRir !== null &&
-                task.avgRir !== undefined &&
-                task.previousAvgRir !== null &&
-                task.previousAvgRir !== undefined &&
-                task.avgRir < task.previousAvgRir;
-
-              if (isVolumeHigher || isRirHigher) {
-                return (
-                  <div
-                    className="flex items-center justify-center h-7 w-7 text-emerald-400 shrink-0"
-                    title={
-                      isVolumeHigher
-                        ? `Większa objętość niż na poprzednim treningu (${task.totalTonnage} kg vs ${task.previousTonnage} kg)`
-                        : `Taka sama objętość (${task.totalTonnage} kg), wyższy zapas RIR niż na poprzednim treningu`
-                    }
-                  >
-                    <ArrowUp className="h-4 w-4 stroke-[2.5]" />
-                  </div>
-                );
-              }
-              if (isVolumeLower || isRirLower) {
-                return (
-                  <div
-                    className="flex items-center justify-center h-7 w-7 text-red-500 shrink-0"
-                    title={
-                      isVolumeLower
-                        ? `Mniejsza objętość niż na poprzednim treningu (${task.totalTonnage} kg vs ${task.previousTonnage} kg)`
-                        : `Taka sama objętość (${task.totalTonnage} kg), mniejszy zapas RIR niż na poprzednim treningu`
-                    }
-                  >
-                    <ArrowDown className="h-4 w-4 stroke-[2.5]" />
-                  </div>
-                );
-              }
-              return (
-                <div
-                  className="flex items-center justify-center h-7 w-7 text-orange-400 shrink-0"
-                  title={`Taka sama objętość i RIR jak na poprzednim treningu (${task.totalTonnage} kg)`}
-                >
-                  <ArrowLeftRight className="h-4 w-4 stroke-[2.5]" />
-                </div>
-              );
-            })()}
-
-          {/* Uchwyt 3 pionowych kropek (przeciąganie w górę / dół lub kliknięcie dla szybkiego menu) */}
-          <div className="relative" data-quick-move-wrapper={index}>
+          {/* Uchwyt 3 pionowych kropek z menu kontekstowym (między obrazkiem a nazwą ćwiczenia) */}
+          <div
+            className="relative shrink-0"
+            data-quick-move-wrapper={index}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div
               role="button"
               tabIndex={0}
@@ -1460,16 +1407,15 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
                 e.stopPropagation();
                 onToggleQuickMove?.();
               }}
-              className={`flex items-center justify-center h-7 w-7 rounded-none border transition-colors cursor-grab active:cursor-grabbing select-none shrink-0 outline-none focus:outline-none ${
+              className={`flex items-center justify-center h-7 w-5 rounded-none transition-colors cursor-grab active:cursor-grabbing select-none shrink-0 outline-none focus:outline-none ${
                 isDragging
-                  ? 'bg-red-950 border-red-500 text-red-300 shadow-md shadow-red-950/50'
-                  : 'bg-black border-zinc-800 text-zinc-500 hover:text-white hover:border-zinc-700'
+                  ? 'text-red-400'
+                  : 'text-zinc-500 hover:text-white'
               }`}
               style={{ touchAction: 'none' }}
-              title="Przytrzymaj i przeciągnij w pionie, aby przesunąć ćwiczenie (lub kliknij)"
-              aria-label="Przesuń ćwiczenie"
+              title="Opcje ćwiczenia / przytrzymaj i przeciągnij, aby zmienić kolejność"
+              aria-label="Opcje ćwiczenia"
             >
-              {/* 3 kropki pionowo z góry na dół */}
               <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
                 <circle cx="12" cy="5" r="2.2" />
                 <circle cx="12" cy="12" r="2.2" />
@@ -1477,86 +1423,165 @@ const ExerciseSessionCard: React.FC<ExerciseSessionCardProps> = ({
               </svg>
             </div>
 
-            {/* Szybkie menu po kliknięciu w 3 kropki (tylko jedno aktywne w danym momencie) */}
-            {isQuickMoveOpen && totalTasks && totalTasks > 1 && (
+            {/* Menu kontekstowe 3 kropek (zmiana kolejności + Usuń na samym dole) */}
+            {isQuickMoveOpen && (
               <div
                 data-quick-move-menu="true"
                 onClick={(e) => e.stopPropagation()}
-                className="absolute right-0 top-8 z-30 min-w-[150px] bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 border-2 border-zinc-700 p-1.5 shadow-2xl space-y-1 animate-in fade-in zoom-in-95 duration-100"
+                className="absolute left-0 top-8 z-30 min-w-[165px] bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 border-2 border-zinc-700 p-1.5 shadow-2xl space-y-1 animate-in fade-in zoom-in-95 duration-100"
               >
-                <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider px-2 py-1 border-b border-zinc-800">
-                  Przesuń ćwiczenie
-                </div>
-                {index > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onMoveTo?.(index - 1);
-                      onCloseQuickMove?.();
-                    }}
-                    className="flex w-full items-center gap-2 px-2 py-1 text-left text-xs font-bold text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
-                  >
-                    <span>↑</span>
-                    <span>W górę</span>
-                  </button>
+                {totalTasks && totalTasks > 1 && (
+                  <>
+                    <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider px-2 py-1 border-b border-zinc-800">
+                      Przesuń ćwiczenie
+                    </div>
+                    {index > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onMoveTo?.(index - 1);
+                          onCloseQuickMove?.();
+                        }}
+                        className="flex w-full items-center gap-2 px-2 py-1 text-left text-xs font-bold text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                      >
+                        <span>↑</span>
+                        <span>W górę</span>
+                      </button>
+                    )}
+                    {index < totalTasks - 1 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onMoveTo?.(index + 1);
+                          onCloseQuickMove?.();
+                        }}
+                        className="flex w-full items-center gap-2 px-2 py-1 text-left text-xs font-bold text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                      >
+                        <span>↓</span>
+                        <span>W dół</span>
+                      </button>
+                    )}
+                    {index > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onMoveTo?.(0);
+                          onCloseQuickMove?.();
+                        }}
+                        className="flex w-full items-center gap-2 px-2 py-1 text-left text-xs font-bold text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                      >
+                        <span>⇈</span>
+                        <span>Na samą górę</span>
+                      </button>
+                    )}
+                    {index < totalTasks - 2 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onMoveTo?.(totalTasks - 1);
+                          onCloseQuickMove?.();
+                        }}
+                        className="flex w-full items-center gap-2 px-2 py-1 text-left text-xs font-bold text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                      >
+                        <span>⇊</span>
+                        <span>Na sam dół</span>
+                      </button>
+                    )}
+                    <div className="border-t border-zinc-800 my-1" />
+                  </>
                 )}
-                {index < totalTasks - 1 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onMoveTo?.(index + 1);
-                      onCloseQuickMove?.();
-                    }}
-                    className="flex w-full items-center gap-2 px-2 py-1 text-left text-xs font-bold text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
-                  >
-                    <span>↓</span>
-                    <span>W dół</span>
-                  </button>
-                )}
-                {index > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onMoveTo?.(0);
-                      onCloseQuickMove?.();
-                    }}
-                    className="flex w-full items-center gap-2 px-2 py-1 text-left text-xs font-bold text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
-                  >
-                    <span>⇈</span>
-                    <span>Na samą górę</span>
-                  </button>
-                )}
-                {index < totalTasks - 2 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onMoveTo?.(totalTasks - 1);
-                      onCloseQuickMove?.();
-                    }}
-                    className="flex w-full items-center gap-2 px-2 py-1 text-left text-xs font-bold text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
-                  >
-                    <span>⇊</span>
-                    <span>Na sam dół</span>
-                  </button>
-                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onCloseQuickMove?.();
+                    onDeleteExercise();
+                  }}
+                  className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs font-bold text-rose-400 hover:text-rose-300 hover:bg-red-950/50 transition-colors cursor-pointer"
+                  title="Usuń to ćwiczenie z tego dnia treningowego"
+                >
+                  <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                  <span>Usuń</span>
+                </button>
               </div>
             )}
           </div>
 
-          {/* Przycisk zwijania / rozwijania pojedynczego ćwiczenia */}
+          {/* Nazwa ćwiczenia */}
+          <div className="min-w-0 flex-1 flex flex-col justify-center">
+            <h4 className="text-xs sm:text-sm font-bold text-white tracking-wide uppercase group-hover:text-red-400 transition-colors break-words leading-snug">
+              {task.exercise?.name ?? 'Ćwiczenie'}
+            </h4>
+            {task.is_extra && (
+              <span className="mt-0.5 inline-block text-[9px] font-bold text-red-400 uppercase tracking-wider leading-none">
+                POZA PLANEM
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Prawa strona: kolorowa strzałka trendu, skrócona ramka serii (szara -> czerwona), strzałka rozwijania */}
+        <div className="flex items-center gap-2 shrink-0">
+          {exerciseTrend && (
+            <div
+              className={`flex items-center justify-center w-5 h-7 shrink-0 ${
+                exerciseTrend === 'up'
+                  ? 'text-emerald-400'
+                  : exerciseTrend === 'down'
+                  ? 'text-red-500'
+                  : 'text-orange-400'
+              }`}
+              title={
+                exerciseTrend === 'up'
+                  ? task.totalTonnage > (task.previousTonnage ?? 0)
+                    ? `Większa objętość niż na poprzednim treningu (${task.totalTonnage} kg vs ${task.previousTonnage} kg)`
+                    : `Taka sama objętość (${task.totalTonnage} kg), wyższy zapas RIR niż na poprzednim treningu`
+                  : exerciseTrend === 'down'
+                  ? task.totalTonnage < (task.previousTonnage ?? 0)
+                    ? `Mniejsza objętość niż na poprzednim treningu (${task.totalTonnage} kg vs ${task.previousTonnage} kg)`
+                    : `Taka sama objętość (${task.totalTonnage} kg), mniejszy zapas RIR niż na poprzednim treningu`
+                  : `Taka sama objętość i RIR jak na poprzednim treningu (${task.totalTonnage} kg)`
+              }
+            >
+              {exerciseTrend === 'up' ? (
+                <ArrowUp className="h-4 w-4 stroke-[2.5]" />
+              ) : exerciseTrend === 'down' ? (
+                <ArrowDown className="h-4 w-4 stroke-[2.5]" />
+              ) : (
+                <ArrowLeftRight className="h-4 w-4 stroke-[2.5]" />
+              )}
+            </div>
+          )}
+
+          {!task.is_extra && targetSets > 0 ? (
+            <span
+              className={`inline-flex items-center justify-center h-7 min-w-[46px] px-2.5 rounded-none border text-xs font-bold font-sans tabular-nums whitespace-nowrap shrink-0 transition-colors ${
+                isCompletedAllSets
+                  ? 'bg-red-950/90 border-red-600 text-red-200'
+                  : 'bg-black/80 border-zinc-800 text-zinc-300'
+              }`}
+            >
+              {loggedSetsCount} z {targetSets}
+            </span>
+          ) : task.is_extra && loggedSetsCount > 0 ? (
+            <span className="inline-flex items-center justify-center h-7 min-w-[46px] px-2.5 rounded-none border bg-red-950/90 border-red-600 text-red-200 text-xs font-bold font-sans tabular-nums whitespace-nowrap shrink-0">
+              {loggedSetsCount} ser.
+            </span>
+          ) : null}
+
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
               handleToggle();
             }}
-            className="flex items-center justify-center h-7 w-7 rounded-none border border-zinc-800 bg-black text-zinc-400 hover:text-white hover:border-zinc-700 transition-colors cursor-pointer outline-none focus:outline-none"
+            className="flex items-center justify-center h-7 w-5 text-zinc-400 hover:text-white cursor-pointer outline-none focus:outline-none shrink-0"
             title={isExpanded ? 'Zwiń ćwiczenie' : 'Rozwiń ćwiczenie'}
             aria-label={isExpanded ? 'Zwiń ćwiczenie' : 'Rozwiń ćwiczenie'}
           >
             <ChevronDown
               className={`h-4 w-4 transition-transform duration-200 ${
-                isExpanded ? 'transform rotate-180 text-red-500' : ''
+                isExpanded ? 'rotate-0 text-red-500' : '-rotate-90 text-zinc-400 group-hover:text-white'
               }`}
             />
           </button>

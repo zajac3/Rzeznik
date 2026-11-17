@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { X, Search, Check } from 'lucide-react';
 import { db, type Exercise, type MuscleGroup } from '../db/db';
-import { getCategoryIcon } from '../utils/categoryIcons';
+import { CategoryIcon } from '../utils/categoryIcons';
 
 interface AddExerciseModalProps {
   isOpen: boolean;
@@ -83,13 +83,13 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative flex max-h-[88vh] w-full max-w-lg flex-col rounded-none border-2 border-zinc-700/80 bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-5 overflow-hidden text-zinc-100 shadow-2xl shadow-black/80 cursor-default"
+        className="relative flex max-h-[88vh] w-full max-w-lg flex-col rounded-none border border-zinc-800 bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-5 overflow-hidden text-zinc-100 shadow-2xl shadow-black/80 cursor-default"
       >
         {/* iOS Drag Handle */}
         <div className="mx-auto -mt-1 mb-3 h-1 w-10 bg-zinc-700 sm:hidden" />
 
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b-2 border-zinc-800">
+        <div className="flex items-center justify-between pb-2.5">
           <div>
             <div className="flex items-center gap-2">
               <div className="h-2 w-2 bg-gradient-to-r from-red-600 to-red-800"></div>
@@ -103,11 +103,12 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="rounded-none border border-zinc-800 bg-black p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer"
+            className="rounded-none p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
+        <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
 
         {/* Search & Muscle Filters */}
         {!showCreateNew && (
@@ -143,10 +144,10 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
         )}
 
         {/* Content list / Creation form */}
-        <div className="mt-3 flex-1 overflow-y-auto space-y-1.5 pr-1 max-h-[50vh]">
+        <div className="mt-3 flex-1 overflow-y-auto pr-1 max-h-[50vh] divide-y divide-zinc-800/50">
           {showCreateNew ? (
-            <form onSubmit={handleCreateExercise} className="space-y-3 rounded-none bg-gradient-to-b from-zinc-950 to-black p-4 border-2 border-zinc-800">
-              <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+            <form onSubmit={handleCreateExercise} className="space-y-3 py-1">
+              <div className="flex items-center justify-between pb-1">
                 <h4 className="text-xs font-bold text-white uppercase tracking-wider">
                   Nowe ćwiczenie
                 </h4>
@@ -158,6 +159,7 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
                   Anuluj
                 </button>
               </div>
+              <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
 
               <div>
                 <label className="block text-xs font-medium text-zinc-300 mb-1">
@@ -243,26 +245,25 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
           ) : (
             filtered.map((ex) => {
               const isAlreadyAdded = ex.id ? existingExerciseIds.includes(ex.id) : false;
-              const CategoryIcon = getCategoryIcon(ex.muscle_group);
               return (
                 <div
                   key={ex.id}
                   onClick={() => ex.id && onSelectExercise(ex.id)}
-                  className={`flex items-center justify-between p-2.5 rounded-none border transition-colors cursor-pointer ${
+                  className={`flex items-center justify-between py-2.5 px-2 rounded-none transition-colors cursor-pointer ${
                     isAlreadyAdded
-                      ? 'border-zinc-800/40 bg-zinc-950/40 text-zinc-500'
-                      : 'border border-zinc-800 bg-gradient-to-r from-black via-zinc-950 to-black hover:border-zinc-600 text-zinc-100'
+                      ? 'text-zinc-500 hover:bg-zinc-900/30'
+                      : 'hover:bg-zinc-900/60 text-zinc-100'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-none bg-zinc-950 border border-zinc-800 shrink-0 overflow-hidden">
-                      <CategoryIcon className="w-6 h-6 object-contain opacity-85" />
+                    <div className="flex h-8 w-8 items-center justify-center rounded-none bg-black/80 border border-zinc-800/90 shrink-0 overflow-hidden">
+                      <CategoryIcon muscleGroup={ex.muscle_group} className="w-6 h-6 object-contain opacity-85" />
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs font-bold text-white uppercase">{ex.name}</span>
                         {isAlreadyAdded && (
-                          <span className="inline-flex items-center gap-0.5 rounded-none bg-zinc-900 border border-zinc-700 px-1.5 py-0.2 text-[9px] font-bold text-zinc-400 uppercase">
+                          <span className="inline-flex items-center gap-0.5 rounded-none bg-zinc-900 border border-zinc-800 px-1.5 py-0.2 text-[9px] font-bold text-zinc-400 uppercase">
                             <Check className="h-2.5 w-2.5" /> W planie
                           </span>
                         )}
@@ -278,7 +279,7 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
 
                   <button
                     type="button"
-                    className="flex h-7 w-7 items-center justify-center rounded-none border border-zinc-800 bg-zinc-950 text-zinc-300 hover:bg-red-700 hover:text-white transition-colors cursor-pointer text-sm font-bold"
+                    className="flex h-7 w-7 items-center justify-center rounded-none text-zinc-400 hover:bg-red-700 hover:text-white transition-colors cursor-pointer text-sm font-bold"
                   >
                     +
                   </button>
@@ -290,19 +291,22 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
 
         {/* Footer */}
         {!showCreateNew && (
-          <div className="mt-3 pt-2.5 border-t-2 border-zinc-800 flex items-center justify-between">
-            <span className="text-xs text-zinc-400">
-              {filtered.length} ćwiczeń w słowniku
-            </span>
-            <button
-              onClick={() => {
-                setNewName('');
-                setShowCreateNew(true);
-              }}
-              className="text-xs font-bold uppercase tracking-wider text-red-500 hover:text-red-400 cursor-pointer"
-            >
-              + Własne ćwiczenie
-            </button>
+          <div className="mt-3 space-y-2.5">
+            <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
+            <div className="flex items-center justify-between pt-0.5">
+              <span className="text-xs text-zinc-400">
+                {filtered.length} ćwiczeń w słowniku
+              </span>
+              <button
+                onClick={() => {
+                  setNewName('');
+                  setShowCreateNew(true);
+                }}
+                className="text-xs font-bold uppercase tracking-wider text-red-500 hover:text-red-400 cursor-pointer"
+              >
+                + Własne ćwiczenie
+              </button>
+            </div>
           </div>
         )}
       </div>

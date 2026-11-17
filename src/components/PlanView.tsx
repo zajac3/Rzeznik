@@ -32,7 +32,42 @@ import {
 } from '../utils/dateUtils';
 import { AddExerciseModal } from './AddExerciseModal';
 import { RecurringWorkoutModal } from './RecurringWorkoutModal';
-import { getCategoryIcon } from '../utils/categoryIcons';
+import { CategoryIcon } from '../utils/categoryIcons';
+
+function formatCalendarRoutineLabel(name?: string): string {
+  if (!name) return '';
+  let cleaned = name.trim();
+  if (!cleaned) return '';
+
+  // Jeśli nazwa ma prefiks "Dzień N - ..." lub "Dzień N: ...", użyj części właściwej po nim
+  const dayPrefixWithRest = cleaned.match(/^dzie[nń]\s*\d+\s*[-–:]\s*(.+)$/i);
+  if (dayPrefixWithRest && dayPrefixWithRest[1].trim()) {
+    cleaned = dayPrefixWithRest[1].trim();
+  } else {
+    const onlyDayMatch = cleaned.match(/^dzie[nń]\s*(\d+)$/i);
+    if (onlyDayMatch) {
+      return `D${onlyDayMatch[1]}`;
+    }
+  }
+
+  const tokens = cleaned
+    .split(/[\s+\-/&:,()]+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  if (tokens.length === 0) return cleaned.slice(0, 2).toUpperCase();
+
+  if (tokens.length === 1) {
+    const single = tokens[0].toUpperCase();
+    return single.length <= 3 ? single : single.slice(0, 2);
+  }
+
+  return tokens
+    .slice(0, 3)
+    .map((token) => (/^\d+$/.test(token) ? token : token[0]))
+    .join('')
+    .toUpperCase();
+}
 
 export interface PlanViewProps {
   onGoToActiveWorkout?: () => void;
@@ -54,6 +89,9 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
   // Editing day name inline
   const [editingDayId, setEditingDayId] = useState<number | null>(null);
   const [editingDayName, setEditingDayName] = useState('');
+
+  // Potwierdzenie usunięcia szablonu
+  const [confirmDeleteDayId, setConfirmDeleteDayId] = useState<number | null>(null);
 
   // Rozwinięte szablony dni treningowych (domyślnie wszystkie zwinięte)
   const [expandedDayIds, setExpandedDayIds] = useState<Set<number>>(new Set());
@@ -143,13 +181,11 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
     }
   };
 
-  // Trwałe usuwanie dnia
-  const handleDeleteRoutineDay = async (e: React.MouseEvent, dayId: number) => {
-    e.preventDefault();
-    e.stopPropagation();
-
+  // Trwałe usuwanie dnia (po potwierdzeniu)
+  const handleDeleteRoutineDay = async (dayId: number) => {
     try {
       await deleteRoutineDay(dayId);
+      setConfirmDeleteDayId(null);
     } catch (err) {
       console.error('Błąd usuwania dnia z bazy:', err);
     }
@@ -205,7 +241,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
       {/* 1. INTERAKTYWNY WIDOK KALENDARZA (WIDOK MIESIĄCA) */}
       <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 shadow-lg shadow-black/60 space-y-3.5">
         {/* Month Header */}
-        <div className="flex items-center justify-between pb-3 border-b-2 border-zinc-800">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <CalendarIcon className="h-4 w-4 text-red-500" />
             <h2 className="text-sm font-bold text-zinc-100 tracking-wider uppercase">
@@ -254,7 +290,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
         </div>
 
         {/* Days of week header (Pn - Nd) */}
-        <div className="grid grid-cols-7 gap-2 text-center pb-2 border-b border-zinc-800">
+        <div className="grid grid-cols-7 gap-1 sm:gap-2 text-center pb-2 border-b border-zinc-800">
           {POLISH_DAYS_SHORT.map((day) => (
             <span key={day} className="text-[10px] font-bold text-zinc-400 py-1 uppercase tracking-wider">
               {day}
@@ -263,7 +299,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
         </div>
 
         {/* Month Grid Cells */}
-        <div className="grid grid-cols-7 gap-2">
+        <div className="grid grid-cols-7 gap-1 sm:gap-2">
           {calendarCells.map((cell) => {
             const dayRecord = workoutDayMap.get(cell.dateISO);
             const hasAssigned = Boolean(dayRecord?.routine_day_name);
@@ -274,7 +310,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
                 key={cell.dateISO}
                 type="button"
                 onClick={() => setSelectedCalendarDateISO(cell.dateISO)}
-                className={`relative flex flex-col items-center justify-start min-h-[54px] rounded-none p-1.5 transition-colors text-center cursor-pointer outline-none focus:outline-none select-none ${
+                className={`relative flex flex-col items-center justify-start min-h-[54px] rounded-none p-1 sm:p-1.5 transition-colors text-center cursor-pointer outline-none focus:outline-none select-none ${
                   isSelected
                     ? 'bg-gradient-to-b from-red-950 via-zinc-950 to-black text-white font-bold border-2 border-red-600 shadow-[0_0_12px_rgba(220,38,38,0.35)]'
                     : cell.isToday
@@ -298,13 +334,13 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
                   {cell.dayNumber}
                 </span>
 
-                {/* Plakietka przypisanego dnia */}
+                {/* Plakietka przypisanego dnia (inicjały nazwy szablonu) */}
                 {hasAssigned && (
                   <span
-                    className="mt-1 w-full truncate rounded-none bg-gradient-to-r from-red-900 to-red-950 border border-red-700 px-1 py-0.5 text-[9px] font-bold text-red-200 text-center uppercase tracking-wider"
+                    className="mt-1 w-full rounded-none bg-gradient-to-r from-red-900 to-red-950 border border-red-700 px-0.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-red-200 text-center uppercase tracking-normal leading-tight whitespace-nowrap overflow-hidden"
                     title={dayRecord?.routine_day_name}
                   >
-                    {dayRecord?.routine_day_name?.replace('Dzień ', 'D')}
+                    {formatCalendarRoutineLabel(dayRecord?.routine_day_name)}
                   </span>
                 )}
               </button>
@@ -326,10 +362,10 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
             type="button"
             onClick={() => setIsCreatingDay(true)}
             style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
-            className="flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider rounded-none px-3.5 sm:px-4 py-2 text-xs transition-colors shadow-none cursor-pointer shrink-0 ml-2"
+            className="flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider rounded-none px-3.5 sm:px-4 py-2 text-xs shadow-none cursor-pointer shrink-0 ml-2"
           >
             <span className="text-base font-bold leading-none">+</span>
-            <span>Dodaj Dzień</span>
+            <span>Dodaj</span>
           </button>
         </div>
 
@@ -391,7 +427,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
               Brak zdefiniowanych dni treningowych
             </p>
             <p className="mt-1 text-xs text-zinc-400">
-              Kliknij przycisk „Dodaj Dzień” powyżej, aby utworzyć szablon.
+              Kliknij przycisk „Dodaj” powyżej, aby utworzyć szablon.
             </p>
           </div>
         ) : (
@@ -402,18 +438,19 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
 
             const isEditing = editingDayId === day.id;
             const isExpanded = expandedDayIds.has(day.id!);
+            const isConfirmingDelete = confirmDeleteDayId === day.id;
 
             return (
               <div
                 key={day.id}
-                className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 shadow-lg shadow-black/50 transition-all"
+                className="rounded-none bg-gradient-to-b from-[#141417] via-[#0e0e11] to-[#08080a] p-4 sm:p-5 border-2 border-zinc-700/80 shadow-lg shadow-black/50"
               >
-                {/* Header dnia - klikalny do zwijania / rozwijania */}
+                {/* Header szablonu w stylu widoku Trening */}
                 <div
                   onClick={() => !isEditing && toggleDayCollapse(day.id!)}
-                  className={`flex items-center justify-between select-none transition-colors group ${
+                  className={`flex items-center justify-between gap-2 select-none group outline-none focus:outline-none ${
                     !isEditing ? 'cursor-pointer' : ''
-                  } ${isExpanded ? 'pb-3 border-b-2 border-zinc-800' : 'pb-0'}`}
+                  }`}
                 >
                   {isEditing ? (
                     <form
@@ -440,11 +477,11 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
                           }
                         }}
                         placeholder="Nazwa szablonu..."
-                        className="flex-1 min-w-0 rounded-none border-2 border-red-600 bg-black px-2.5 py-1 text-xs font-bold text-white focus:outline-none focus:ring-1 focus:ring-red-500"
+                        className="flex-1 min-w-0 rounded-none border-2 border-red-600 bg-black px-2.5 py-1 text-xs font-bold text-white focus:outline-none"
                       />
                       <button
                         type="submit"
-                        className="flex items-center gap-1 shrink-0 rounded-none bg-red-700 hover:bg-red-600 px-2.5 py-1 text-xs font-bold text-white cursor-pointer transition-colors"
+                        className="flex items-center gap-1 shrink-0 rounded-none bg-red-700 hover:bg-red-600 px-2.5 py-1 text-xs font-bold text-white cursor-pointer"
                         title="Zapisz nazwę"
                       >
                         <Check className="h-3.5 w-3.5" />
@@ -457,7 +494,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
                           e.stopPropagation();
                           setEditingDayId(null);
                         }}
-                        className="flex items-center gap-1 shrink-0 rounded-none border border-zinc-700 bg-black hover:bg-zinc-800 px-2.5 py-1 text-xs font-bold text-zinc-400 hover:text-white cursor-pointer transition-colors"
+                        className="flex items-center gap-1 shrink-0 rounded-none border border-zinc-700 bg-black hover:bg-zinc-800 px-2.5 py-1 text-xs font-bold text-zinc-400 hover:text-white cursor-pointer"
                         title="Anuluj edycję"
                       >
                         <X className="h-3.5 w-3.5" />
@@ -466,38 +503,27 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
                     </form>
                   ) : (
                     <>
-                      <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                        {/* Ikona zwijania/rozwijania z rotacją */}
-                        <div className="flex items-center justify-center h-7 w-7 rounded-none bg-black border border-zinc-800 text-zinc-400 group-hover:text-white group-hover:border-zinc-700 shrink-0 transition-colors">
-                          <ChevronDown
-                            className={`h-4 w-4 transition-transform duration-200 ${
-                              isExpanded ? 'transform rotate-180 text-red-500' : ''
-                            }`}
-                          />
-                        </div>
-
-                        <div className="flex items-center gap-2 min-w-0">
-                          <h4 className="text-sm font-bold text-zinc-100 tracking-wider uppercase truncate group-hover:text-white">
-                            {day.name}
-                          </h4>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingDayId(day.id!);
-                              setEditingDayName(day.name);
-                            }}
-                            className="text-zinc-500 hover:text-zinc-200 p-1 rounded-none cursor-pointer"
-                            title="Zmień nazwę"
-                          >
-                            <Edit2 className="h-3 w-3" />
-                          </button>
-                        </div>
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <h4 className="text-sm sm:text-base font-bold text-white tracking-wider uppercase truncate group-hover:text-red-400">
+                          {day.name}
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingDayId(day.id!);
+                            setEditingDayName(day.name);
+                          }}
+                          className="text-zinc-500 hover:text-zinc-200 p-1 rounded-none cursor-pointer shrink-0"
+                          title="Zmień nazwę"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
 
-                      {/* Prawa strona nagłówka */}
-                      <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-                        <span className="text-[11px] text-zinc-400 font-bold bg-black/60 border border-zinc-800 px-2 py-0.5">
+                      {/* Prawa strona nagłówka jak w zakładce Trening */}
+                      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <span className="text-[11px] text-zinc-400 font-bold bg-black/75 border border-zinc-800 px-2 py-0.5 tabular-nums">
                           {dayExercises.length} ĆW.
                         </span>
                         <button
@@ -509,7 +535,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
                             setRecurringModalInitialRoutineId(day.id!);
                             setIsRecurringModalOpen(true);
                           }}
-                          className="flex items-center gap-1 rounded-none border border-zinc-800 bg-black px-2 py-1 text-xs text-red-400 hover:border-red-700 hover:text-white transition-colors cursor-pointer"
+                          className="flex items-center gap-1 rounded-none border border-zinc-800 bg-black px-2 py-1 text-xs text-red-400 hover:border-red-700 hover:text-white cursor-pointer"
                           title={`Zaplanuj cyklicznie ${day.name} w kalendarzu`}
                         >
                           <Repeat className="h-3 w-3 text-red-500" />
@@ -520,102 +546,173 @@ export const PlanView: React.FC<PlanViewProps> = ({ onGoToActiveWorkout }) => {
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            handleDeleteRoutineDay(e, day.id!);
+                            setConfirmDeleteDayId((prev) => (prev === day.id ? null : day.id!));
                           }}
-                          className="flex items-center gap-1 rounded-none border border-zinc-800 bg-black px-2.5 py-1 text-xs text-zinc-400 hover:border-red-900 hover:text-rose-400 transition-colors cursor-pointer"
+                          className={`flex items-center gap-1 rounded-none border px-2 py-1 text-xs cursor-pointer ${
+                            isConfirmingDelete
+                              ? 'border-red-700 bg-red-950/60 text-rose-300'
+                              : 'border-zinc-800 bg-black text-zinc-400 hover:border-red-900 hover:text-rose-400'
+                          }`}
                           title="Usuń ten dzień z planu"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                           <span className="text-[11px] font-bold uppercase tracking-wider hidden sm:inline">Usuń</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleDayCollapse(day.id!);
+                          }}
+                          className="flex items-center justify-center h-7 w-7 rounded-none border border-zinc-800 bg-black text-zinc-400 hover:text-white hover:border-zinc-700 cursor-pointer select-none shrink-0 outline-none focus:outline-none"
+                          title={isExpanded ? 'Zwiń szablon' : 'Rozwiń szablon'}
+                          aria-label={isExpanded ? 'Zwiń szablon' : 'Rozwiń szablon'}
+                        >
+                          <ChevronDown
+                            className={`h-4 w-4 transition-transform duration-200 ${
+                              isExpanded ? 'rotate-0 text-red-500' : '-rotate-90 text-zinc-300'
+                            }`}
+                          />
                         </button>
                       </div>
                     </>
                   )}
                 </div>
 
-                {/* Rozwijana zawartość szablonu */}
-                {isExpanded && (
-                  <div className="pt-3.5 space-y-3.5 animate-in fade-in duration-150">
-                    {/* Lista ćwiczeń w zestawie */}
-                    {dayExercises.length === 0 ? (
-                      <div className="py-3 text-center rounded-none bg-black border border-zinc-800">
-                        <p className="text-xs text-zinc-400">
-                          Brak ćwiczeń w tym dniu. Dodaj pierwsze ćwiczenie poniżej.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-1.5">
+                {/* Potwierdzenie usunięcia szablonu */}
+                {isConfirmingDelete && (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="mt-3 flex flex-wrap items-center justify-between gap-2 p-2.5 bg-black/80 border border-red-900/70"
+                  >
+                    <span className="text-xs font-medium text-zinc-200">
+                      Usunąć szablon <strong className="text-white uppercase">{day.name}</strong>?
+                    </span>
+                    <div className="flex items-center gap-2 ml-auto">
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteRoutineDay(day.id!)}
+                        className="rounded-none bg-red-700 hover:bg-red-600 px-2.5 py-1 text-xs font-bold text-white uppercase cursor-pointer"
+                      >
+                        Tak, usuń
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteDayId(null)}
+                        className="rounded-none bg-black border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 hover:text-white cursor-pointer"
+                      >
+                        Anuluj
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Rozwijana zawartość szablonu - układ jak w zakładce Trening (utrzymywana w DOM przez hidden bez migotania ikon) */}
+                <div className={isExpanded ? 'mt-3 space-y-3' : 'hidden'}>
+                  <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-800/90 to-transparent" />
+
+                  {/* Lista ćwiczeń w zestawie */}
+                  {dayExercises.length === 0 ? (
+                    <div className="relative -mx-2 sm:-mx-2.5 px-4 sm:px-5 py-3 text-center">
+                      <div
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-0 bg-black/40"
+                        style={{
+                          maskImage:
+                            'linear-gradient(to bottom, transparent, black 14px, black calc(100% - 14px), transparent), linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent)',
+                          WebkitMaskImage:
+                            'linear-gradient(to bottom, transparent, black 14px, black calc(100% - 14px), transparent), linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent)',
+                          maskComposite: 'intersect',
+                          WebkitMaskComposite: 'source-in',
+                        }}
+                      />
+                      <p className="relative text-xs text-zinc-400">
+                        Brak ćwiczeń w tym dniu. Dodaj pierwsze ćwiczenie poniżej.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="relative -mx-2 sm:-mx-2.5 px-4 sm:px-5 py-0.5">
+                      <div
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-0 bg-black/40"
+                        style={{
+                          maskImage:
+                            'linear-gradient(to bottom, transparent, black 20px, black calc(100% - 20px), transparent), linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent)',
+                          WebkitMaskImage:
+                            'linear-gradient(to bottom, transparent, black 20px, black calc(100% - 20px), transparent), linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent)',
+                          maskComposite: 'intersect',
+                          WebkitMaskComposite: 'source-in',
+                        }}
+                      />
+                      <div className="relative">
                         {dayExercises.map((re, idx) => {
                           const ex = exerciseMap.get(re.exercise_id);
-                          const CategoryIcon = getCategoryIcon(ex?.muscle_group);
                           return (
-                            <div
-                              key={re.id}
-                              className="flex items-center justify-between rounded-none bg-black p-3 border border-zinc-800 hover:border-zinc-600 transition-colors"
-                            >
-                              <div className="flex items-center gap-2.5">
-                                <div className="flex h-7 w-7 items-center justify-center rounded-none bg-zinc-950 border border-zinc-800 shrink-0 overflow-hidden">
-                                  <CategoryIcon className="w-5 h-5 object-contain opacity-85" />
-                                </div>
-                                <span className="text-xs font-bold text-zinc-500 w-4">
-                                  #{idx + 1}
-                                </span>
-                                <div>
-                                  <span className="text-xs font-bold text-zinc-100 block uppercase">
-                                    {ex?.name ?? 'Ćwiczenie'}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Stepper liczby serii */}
-                              <div className="flex items-center gap-2">
-                                <div className="flex items-center bg-zinc-950 rounded-none px-2 py-0.5 border border-zinc-800">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAdjustTargetSets(re.id!, re.target_sets, -1)}
-                                    className="h-5 w-5 rounded-none text-xs font-bold text-zinc-400 hover:text-white flex items-center justify-center cursor-pointer"
-                                  >
-                                    -
-                                  </button>
-                                  <span className="px-2 text-xs font-bold text-zinc-200">
-                                    {re.target_sets} {re.target_sets === 1 ? 'seria' : 'serie'}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAdjustTargetSets(re.id!, re.target_sets, 1)}
-                                    className="h-5 w-5 rounded-none text-xs font-bold text-zinc-400 hover:text-white flex items-center justify-center cursor-pointer"
-                                  >
-                                    +
-                                  </button>
+                            <React.Fragment key={re.id}>
+                              {idx > 0 && (
+                                <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-800/90 to-transparent" />
+                              )}
+                              <div className="flex items-center justify-between gap-2 py-3">
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                  <div className="flex h-9 w-9 items-center justify-center rounded-none bg-black/90 border border-zinc-800/90 shrink-0 overflow-hidden">
+                                    <CategoryIcon muscleGroup={ex?.muscle_group} className="w-6 h-6 object-contain opacity-90" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <span className="text-xs sm:text-sm font-bold text-white tracking-wide uppercase block break-words leading-snug">
+                                      {ex?.name ?? 'Ćwiczenie'}
+                                    </span>
+                                  </div>
                                 </div>
 
-                                <button
-                                  type="button"
-                                  onClick={() => removeExerciseFromRoutineDay(re.id!)}
-                                  className="text-zinc-500 hover:text-rose-400 transition-colors p-1 cursor-pointer rounded-none"
-                                  title="Usuń ćwiczenie"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
+                                {/* Stepper liczby serii + usuń ćwiczenie */}
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <div className="flex items-center h-7 bg-black/80 rounded-none border border-zinc-800 px-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAdjustTargetSets(re.id!, re.target_sets, -1)}
+                                      className="h-5 w-5 rounded-none text-xs font-bold text-zinc-400 hover:text-white flex items-center justify-center cursor-pointer"
+                                    >
+                                      -
+                                    </button>
+                                    <span className="px-2 text-xs font-bold text-zinc-200 tabular-nums whitespace-nowrap">
+                                      {re.target_sets} {re.target_sets === 1 ? 'seria' : 'serie'}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAdjustTargetSets(re.id!, re.target_sets, 1)}
+                                      className="h-5 w-5 rounded-none text-xs font-bold text-zinc-400 hover:text-white flex items-center justify-center cursor-pointer"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => removeExerciseFromRoutineDay(re.id!)}
+                                    className="text-zinc-500 hover:text-rose-400 p-1 cursor-pointer rounded-none"
+                                    title="Usuń ćwiczenie"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
                               </div>
-                            </div>
+                            </React.Fragment>
                           );
                         })}
                       </div>
-                    )}
+                    </div>
+                  )}
 
-                    {/* Przycisk dodaj ćwiczenie */}
-                    <button
-                      type="button"
-                      onClick={() => setActiveRoutineDayForExercise(day.id!)}
-                      style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
-                      className="flex w-full items-center justify-center gap-1.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider rounded-none py-2 text-xs transition-colors cursor-pointer"
-                    >
-                      <span className="text-sm font-bold leading-none">+</span>
-                      <span>Dodaj ćwiczenie do {day.name}</span>
-                    </button>
-                  </div>
-                )}
+                  {/* Przycisk dodaj ćwiczenie */}
+                  <button
+                    type="button"
+                    onClick={() => setActiveRoutineDayForExercise(day.id!)}
+                    className="flex w-full items-center justify-center gap-2 rounded-none border border-dashed border-zinc-800/90 bg-black/50 hover:bg-black/80 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 hover:border-red-800/70 hover:text-zinc-200 transition-colors cursor-pointer"
+                  >
+                    <span className="text-sm font-bold text-red-500/85 leading-none">+</span>
+                    <span>Dodaj ćwiczenie do {day.name}</span>
+                  </button>
+                </div>
               </div>
             );
           })

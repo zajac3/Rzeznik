@@ -144,13 +144,13 @@ export default function App() {
             {activeTab === 'export' && <ExportView />}
           </AppErrorBoundary>
         </main>
-
-        {/* iOS Bottom Navigation Bar */}
-        <BottomNavBar activeTab={activeTab} onSelectTab={setActiveTab} />
-
-        {/* Ekran startowy z animacją logo */}
-        {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
       </div>
+
+      {/* iOS Bottom Navigation Bar */}
+      <BottomNavBar activeTab={activeTab} onSelectTab={setActiveTab} />
+
+      {/* Ekran startowy z animacją logo */}
+      {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
     </div>
   );
 }

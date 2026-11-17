@@ -38,6 +38,7 @@ html {
   *, ::before, ::after {
     font-family: 'Space Grotesk', sans-serif;
     -webkit-tap-highlight-color: transparent !important;
+    border-color: #27272a;
   }
   html, body {
     background-color: #09090b !important;
@@ -66,6 +67,9 @@ html {
 }
 
 /* Dodatkowy selektor poza layer dla maksymalnej specyficzności */
+*:focus,
+*:active,
+*:focus-visible,
 button:focus,
 button:active,
 button:focus-visible,

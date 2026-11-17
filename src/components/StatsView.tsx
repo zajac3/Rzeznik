@@ -29,20 +29,38 @@ import {
   addManual1RM,
   deleteManual1RM,
   deleteExercise1RMRecords,
+  createMeasurementType,
+  deleteMeasurementType,
+  addOrUpdateMeasurementEntry,
+  updateMeasurementEntry,
+  deleteMeasurementEntry,
   type BodyWeightEntry,
   type Manual1RMEntry,
   type Exercise,
+  type MeasurementType,
+  type MeasurementEntry,
 } from '../db/db';
 import { getTodayISO } from '../utils/dateUtils';
 import { WorkoutHistoryView } from './WorkoutHistoryView';
-import { getCategoryIcon } from '../utils/categoryIcons';
+import { CategoryIcon } from '../utils/categoryIcons';
+
+const getSetsWord = (count: number) => {
+  if (count === 1) return 'seria';
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) {
+    return 'serie';
+  }
+  return 'serii';
+};
 
 export const StatsView: React.FC = () => {
-  // Trzy subzakładki: [Wykresy], [Maksy] oraz [Historia treningów] (Segmented Control)
-  const [subTab, setSubTab] = useState<'charts' | 'maxes' | 'history'>('charts');
+  // Trzy subzakładki: [Ciężary], [Dane], [Historia] (Segmented Control)
+  const [subTab, setSubTab] = useState<'weights' | 'data' | 'history'>('weights');
 
-  // Wewnątrz Wykresów: przełącznik wykresu ćwiczeń / masy ciała
-  const [chartType, setChartType] = useState<'exercise' | 'weight'>('exercise');
+  // Wewnątrz zakładki Dane: [Maksy], [Masa ciała], [Pomiary]
+  const [dataSubTab, setDataSubTab] = useState<'maxes' | 'weight' | 'measurements'>('maxes');
+
   const [selectedExerciseId, setSelectedExerciseId] = useState<number | null>(() => {
     const saved = localStorage.getItem('pakomat_selected_chart_exercise_id');
     return saved ? Number(saved) : null;
@@ -60,6 +78,21 @@ export const StatsView: React.FC = () => {
   // Edycja wpisu wagi ciała
   const [editingWeightId, setEditingWeightId] = useState<number | null>(null);
   const [editingWeightVal, setEditingWeightVal] = useState<string>('');
+
+  // Własne pomiary ciała (np. obwód bicepsa w cm, klatka w cm itd.)
+  const [selectedMeasurementTypeId, setSelectedMeasurementTypeId] = useState<number | null>(() => {
+    const saved = localStorage.getItem('pakomat_selected_measurement_type_id');
+    return saved ? Number(saved) : null;
+  });
+  const [measurementDate, setMeasurementDate] = useState<string>(() => getTodayISO());
+  const [measurementValue, setMeasurementValue] = useState<string>('');
+  const [editingMeasurementId, setEditingMeasurementId] = useState<number | null>(null);
+  const [editingMeasurementVal, setEditingMeasurementVal] = useState<string>('');
+  const [confirmDeleteMeasurementTypeId, setConfirmDeleteMeasurementTypeId] = useState<number | null>(null);
+  const [isAddMeasurementModalOpen, setIsAddMeasurementModalOpen] = useState<boolean>(false);
+  const [newMeasurementName, setNewMeasurementName] = useState<string>('');
+  const [newMeasurementUnit, setNewMeasurementUnit] = useState<string>('cm');
+  const [measurementTypeError, setMeasurementTypeError] = useState<string | null>(null);
 
   // Formularz ręcznego wpisu 1RM
   const [selectedMaxExerciseId, setSelectedMaxExerciseId] = useState<number | null>(null);
@@ -84,6 +117,14 @@ export const StatsView: React.FC = () => {
 
   const manual1RMs: Manual1RMEntry[] = useLiveQuery(async () => {
     return await db.manual1RMs.orderBy('date').toArray();
+  }, []) ?? [];
+
+  const measurementTypes: MeasurementType[] = useLiveQuery(async () => {
+    return await db.measurementTypes.orderBy('created_at').toArray();
+  }, []) ?? [];
+
+  const measurementEntries: MeasurementEntry[] = useLiveQuery(async () => {
+    return await db.measurementEntries.orderBy('date').toArray();
   }, []) ?? [];
 
   const workoutData = useLiveQuery(async () => {
@@ -379,7 +420,7 @@ export const StatsView: React.FC = () => {
 
     const perDateMap = new Map<
       string,
-      { volume: number; weight: number; max1RM: number; reps: number; rir: number }
+      { totalVolume: number; totalWeight: number; totalReps: number; setsCount: number; max1RM: number }
     >();
 
     for (const set of relevantSets) {
@@ -388,18 +429,26 @@ export const StatsView: React.FC = () => {
       const date = day?.date;
       if (!date) continue;
 
-      const setVolume = Math.round(set.weight * set.reps * 10) / 10;
+      const setVolume = set.weight * set.reps;
       const est1RM = calculateEpley1RM(set.weight, set.reps);
       const existing = perDateMap.get(date);
 
-      if (!existing || setVolume > existing.volume) {
+      if (!existing) {
         perDateMap.set(date, {
-          volume: setVolume,
-          weight: set.weight,
+          totalVolume: setVolume,
+          totalWeight: set.weight,
+          totalReps: set.reps,
+          setsCount: 1,
           max1RM: est1RM,
-          reps: set.reps,
-          rir: set.rir,
         });
+      } else {
+        existing.totalVolume += setVolume;
+        existing.totalWeight += set.weight;
+        existing.totalReps += set.reps;
+        existing.setsCount += 1;
+        if (est1RM > existing.max1RM) {
+          existing.max1RM = est1RM;
+        }
       }
     }
 
@@ -408,19 +457,105 @@ export const StatsView: React.FC = () => {
     return sortedDates.map((date) => {
       const item = perDateMap.get(date)!;
       const parts = date.split('-');
-      const formattedDate = `${parts[2]}.${parts[1]}`;
+      const formattedDate = parts.length === 3 ? `${parts[2]}.${parts[1]}` : date;
+      const avgVolume = Math.round((item.totalVolume / item.setsCount) * 10) / 10;
+      const avgWeight = Math.round((item.totalWeight / item.setsCount) * 10) / 10;
+      const avgReps = Math.round((item.totalReps / item.setsCount) * 10) / 10;
 
       return {
         date,
         shortDate: formattedDate,
-        volume: item.volume,
-        weight: item.weight,
+        volume: avgVolume,
+        avgWeight,
+        avgReps,
+        setsCount: item.setsCount,
         estimated1RM: item.max1RM,
-        reps: item.reps,
-        rir: item.rir,
       };
     });
   }, [workoutData, currentExerciseId]);
+
+  const activeMeasurementType = useMemo(() => {
+    if (measurementTypes.length === 0) return null;
+    if (selectedMeasurementTypeId) {
+      const found = measurementTypes.find((t) => t.id === selectedMeasurementTypeId);
+      if (found) return found;
+    }
+    return measurementTypes[0];
+  }, [measurementTypes, selectedMeasurementTypeId]);
+
+  const activeMeasurementEntries = useMemo(() => {
+    if (!activeMeasurementType?.id) return [];
+    return measurementEntries.filter((e) => e.type_id === activeMeasurementType.id);
+  }, [measurementEntries, activeMeasurementType?.id]);
+
+  const handleSelectMeasurementType = (typeId: number) => {
+    setSelectedMeasurementTypeId(typeId);
+    setConfirmDeleteMeasurementTypeId(null);
+    setEditingMeasurementId(null);
+    try {
+      localStorage.setItem('pakomat_selected_measurement_type_id', String(typeId));
+    } catch {}
+  };
+
+  const handleCreateMeasurementType = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMeasurementTypeError(null);
+    try {
+      const createdId = await createMeasurementType(newMeasurementName, newMeasurementUnit);
+      handleSelectMeasurementType(createdId);
+      setNewMeasurementName('');
+      setNewMeasurementUnit('cm');
+      setMeasurementValue('');
+      setIsAddMeasurementModalOpen(false);
+    } catch (err) {
+      setMeasurementTypeError(
+        err instanceof Error ? err.message : 'Nie udało się dodać pomiaru.'
+      );
+    }
+  };
+
+  const handleDeleteMeasurementType = async (typeId: number) => {
+    await deleteMeasurementType(typeId);
+    setConfirmDeleteMeasurementTypeId(null);
+    setEditingMeasurementId(null);
+    if (selectedMeasurementTypeId === typeId) {
+      setSelectedMeasurementTypeId(null);
+      try {
+        localStorage.removeItem('pakomat_selected_measurement_type_id');
+      } catch {}
+    }
+  };
+
+  const handleSaveMeasurementEntry = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeMeasurementType?.id) return;
+    const val = parseFloat(measurementValue);
+    if (!val || val <= 0) return;
+    await addOrUpdateMeasurementEntry(activeMeasurementType.id, measurementDate, val);
+    setMeasurementValue('');
+  };
+
+  const handleSaveEditMeasurementEntry = async (id?: number) => {
+    if (!id) return;
+    const val = parseFloat(editingMeasurementVal);
+    if (!val || val <= 0) return;
+    await updateMeasurementEntry(id, val);
+    setEditingMeasurementId(null);
+  };
+
+  const handleDeleteMeasurementEntry = async (id?: number) => {
+    if (!id) return;
+    await deleteMeasurementEntry(id);
+  };
+
+  useEffect(() => {
+    if (!isAddMeasurementModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsAddMeasurementModalOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isAddMeasurementModalOpen]);
 
   const handleSaveWeight = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -492,173 +627,194 @@ export const StatsView: React.FC = () => {
 
   return (
     <div className="space-y-4 max-w-xl mx-auto text-zinc-100 font-sans">
-      {/* NATYWNY MOBILNY SEGMENTED CONTROL: [Wykresy], [Maksy], [Historia treningów] */}
-      <div className="grid grid-cols-3 rounded-none bg-gradient-to-r from-zinc-900 via-[#121215] to-zinc-950 border-2 border-zinc-700/80 p-1 text-[11px] sm:text-xs shadow-lg shadow-black/50">
+      {/* NATYWNY MOBILNY SEGMENTED CONTROL: [Ciężary], [Dane], [Historia] */}
+      <div className="grid grid-cols-3 rounded-none bg-gradient-to-r from-zinc-900 via-[#121215] to-zinc-950 border border-zinc-800/80 p-1 text-[11px] sm:text-xs shadow-md shadow-black/40">
         <button
           type="button"
-          onClick={() => setSubTab('charts')}
-          className={`rounded-none py-2 font-bold uppercase tracking-wider transition-colors cursor-pointer text-center outline-none focus:outline-none focus:ring-0 active:outline-none select-none border ${
-            subTab === 'charts'
+          onClick={() => setSubTab('weights')}
+          className={`rounded-none py-2 font-bold uppercase tracking-wider transition-colors cursor-pointer text-center outline-none focus:outline-none focus:ring-0 active:outline-none select-none border whitespace-nowrap ${
+            subTab === 'weights'
               ? 'bg-gradient-to-r from-red-600 to-red-800 text-white border-red-500 shadow-[0_0_10px_rgba(220,38,38,0.3)]'
               : 'text-zinc-400 hover:text-zinc-200 border-transparent'
           }`}
         >
-          Wykresy
+          Ciężary
         </button>
         <button
           type="button"
-          onClick={() => setSubTab('maxes')}
-          className={`rounded-none py-2 font-bold uppercase tracking-wider transition-colors cursor-pointer text-center outline-none focus:outline-none focus:ring-0 active:outline-none select-none border ${
-            subTab === 'maxes'
+          onClick={() => setSubTab('data')}
+          className={`rounded-none py-2 font-bold uppercase tracking-wider transition-colors cursor-pointer text-center outline-none focus:outline-none focus:ring-0 active:outline-none select-none border whitespace-nowrap ${
+            subTab === 'data'
               ? 'bg-gradient-to-r from-red-600 to-red-800 text-white border-red-500 shadow-[0_0_10px_rgba(220,38,38,0.3)]'
               : 'text-zinc-400 hover:text-zinc-200 border-transparent'
           }`}
         >
-          Maksy
+          Dane
         </button>
         <button
           type="button"
           onClick={() => setSubTab('history')}
-          className={`rounded-none py-2 font-bold uppercase tracking-wider transition-colors cursor-pointer text-center outline-none focus:outline-none focus:ring-0 active:outline-none select-none border ${
+          className={`rounded-none py-2 font-bold uppercase tracking-wider transition-colors cursor-pointer text-center outline-none focus:outline-none focus:ring-0 active:outline-none select-none border whitespace-nowrap ${
             subTab === 'history'
               ? 'bg-gradient-to-r from-red-600 to-red-800 text-white border-red-500 shadow-[0_0_10px_rgba(220,38,38,0.3)]'
               : 'text-zinc-400 hover:text-zinc-200 border-transparent'
           }`}
         >
-          <span className="hidden sm:inline">Historia treningów</span>
-          <span className="sm:hidden">Historia</span>
+          Historia
         </button>
       </div>
 
-      {/* SUBZAKŁADKA 1: WYKRESY */}
-      {subTab === 'charts' && (
+      {/* SUBZAKŁADKA 1: CIĘŻARY (TYLKO WYKRESY PROGRESU CIĘŻARU - ŚREDNIA OBJĘTOŚĆ SERII) */}
+      {subTab === 'weights' && (
         <div className="space-y-4">
-          {/* Przełącznik: Wykres ćwiczenia / Masa ciała */}
-          <div className="flex rounded-none bg-gradient-to-r from-zinc-900 to-black border-2 border-zinc-800 p-1 text-xs shadow-none">
+          <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border border-zinc-800/80 shadow-md shadow-black/40 space-y-4">
+            {/* Wybór ćwiczenia */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold text-white tracking-wide uppercase">
+                  Wykres progresu ciężaru
+                </h3>
+                <p className="text-[11px] text-zinc-400 mt-0.5">
+                  Średnia objętość ze wszystkich wykonanych serii
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsExerciseSearchModalOpen(true)}
+                className="w-full sm:w-auto flex items-center justify-between gap-3 rounded-none border border-zinc-700 bg-black px-3 py-2 text-xs font-semibold text-white hover:border-red-600 transition-colors uppercase cursor-pointer"
+                title="Wyszukaj ćwiczenie do wykresu"
+              >
+                <div className="flex items-center gap-2 truncate text-left">
+                  <Search className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                  <span className="truncate max-w-[180px] sm:max-w-xs font-bold text-white">
+                    {currentExerciseObj?.name ?? 'Wybierz ćwiczenie'}
+                  </span>
+                  {currentExerciseObj && (
+                    <span className="text-[10px] text-zinc-400 font-normal shrink-0">
+                      ({currentExerciseObj.muscle_group})
+                    </span>
+                  )}
+                </div>
+                <ChevronDown className="h-3.5 w-3.5 text-zinc-400 shrink-0 ml-1" />
+              </button>
+            </div>
+
+            <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
+
+            {/* Wykres Recharts */}
+            <div>
+              {exerciseChartData.length === 0 ? (
+                <div className="py-10 px-6 text-center rounded-none bg-black/25 flex flex-col items-center justify-center">
+                  <p className="text-sm font-semibold text-zinc-300 max-w-sm mx-auto leading-relaxed text-balance">
+                    Brak danych treningowych dla{' '}
+                    <span className="text-white font-bold">{currentExerciseObj?.name ?? 'wybranego ćwiczenia'}</span>.
+                  </p>
+                  <p className="mt-2 text-xs text-zinc-500 max-w-xs mx-auto leading-relaxed">
+                    Wykonaj serię w zakładce Trening, aby wygenerować wykres.
+                  </p>
+                </div>
+              ) : (
+                <div className="w-full h-64 -ml-2 select-none outline-none focus:outline-none">
+                  <ResponsiveContainer width="100%" height="100%" className="outline-none focus:outline-none select-none">
+                    <LineChart
+                      data={exerciseChartData}
+                      margin={{ top: 15, right: 15, left: -10, bottom: 5 }}
+                      style={{ outline: 'none' }}
+                      tabIndex={-1}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                      <XAxis
+                        dataKey="shortDate"
+                        tick={{ fontSize: 11, fill: '#a1a1aa' }}
+                        stroke="#52525b"
+                        tickLine={false}
+                      />
+                      <YAxis
+                        domain={[(dataMin: number) => Math.max(0, Math.floor(dataMin - 20)), (dataMax: number) => Math.ceil(dataMax + 20)]}
+                        tick={{ fontSize: 11, fill: '#a1a1aa' }}
+                        stroke="#52525b"
+                        tickLine={false}
+                        unit=" kg"
+                      />
+                      <Tooltip content={<CustomChartTooltip />} />
+                      <Line
+                        type="monotone"
+                        dataKey="volume"
+                        name="Śr. objętość serii"
+                        stroke="#dc2626"
+                        strokeWidth={2.5}
+                        dot={{
+                          r: 4.5,
+                          fill: '#991b1b',
+                          stroke: '#09090b',
+                          strokeWidth: 2,
+                        }}
+                        activeDot={{
+                          r: 6.5,
+                          fill: '#ef4444',
+                          stroke: '#09090b',
+                          strokeWidth: 2,
+                        }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUBZAKŁADKA 2: DANE (MAKSY, MASA CIAŁA, POMIARY) */}
+      {subTab === 'data' && (
+        <div className="space-y-4">
+          {/* Przełącznik wewnątrz Dane: Maksy / Masa ciała / Pomiary */}
+          <div className="grid grid-cols-3 rounded-none bg-gradient-to-r from-zinc-900 to-black border border-zinc-800/80 p-1 text-xs shadow-none">
             <button
               type="button"
-              onClick={() => setChartType('exercise')}
-              className={`flex-1 rounded-none py-1.5 font-bold uppercase tracking-wider transition-colors cursor-pointer outline-none focus:outline-none focus:ring-0 active:outline-none select-none border ${
-                chartType === 'exercise'
+              onClick={() => setDataSubTab('maxes')}
+              className={`rounded-none py-1.5 font-bold uppercase tracking-wider transition-colors cursor-pointer outline-none focus:outline-none focus:ring-0 active:outline-none select-none border whitespace-nowrap ${
+                dataSubTab === 'maxes'
                   ? 'bg-gradient-to-r from-zinc-800 to-zinc-900 text-white border-zinc-700 shadow-none'
                   : 'text-zinc-400 hover:text-zinc-200 border-transparent'
               }`}
             >
-              Ciężar ćwiczenia
+              Maksy
             </button>
             <button
               type="button"
-              onClick={() => setChartType('weight')}
-              className={`flex-1 rounded-none py-1.5 font-bold uppercase tracking-wider transition-colors cursor-pointer outline-none focus:outline-none focus:ring-0 active:outline-none select-none border ${
-                chartType === 'weight'
+              onClick={() => setDataSubTab('weight')}
+              className={`rounded-none py-1.5 font-bold uppercase tracking-wider transition-colors cursor-pointer outline-none focus:outline-none focus:ring-0 active:outline-none select-none border whitespace-nowrap ${
+                dataSubTab === 'weight'
                   ? 'bg-gradient-to-r from-zinc-800 to-zinc-900 text-white border-zinc-700 shadow-none'
                   : 'text-zinc-400 hover:text-zinc-200 border-transparent'
               }`}
             >
               Masa ciała
             </button>
+            <button
+              type="button"
+              onClick={() => setDataSubTab('measurements')}
+              className={`rounded-none py-1.5 font-bold uppercase tracking-wider transition-colors cursor-pointer outline-none focus:outline-none focus:ring-0 active:outline-none select-none border whitespace-nowrap ${
+                dataSubTab === 'measurements'
+                  ? 'bg-gradient-to-r from-zinc-800 to-zinc-900 text-white border-zinc-700 shadow-none'
+                  : 'text-zinc-400 hover:text-zinc-200 border-transparent'
+              }`}
+            >
+              Pomiary
+            </button>
           </div>
 
-          {chartType === 'exercise' ? (
-            <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 shadow-lg shadow-black/50">
-              {/* Wybór ćwiczenia */}
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b-2 border-zinc-800 gap-3">
-                <div>
-                  <h3 className="text-base font-bold text-white tracking-wide uppercase">
-                    Wykres progresu ciężaru
-                  </h3>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setIsExerciseSearchModalOpen(true)}
-                  className="w-full sm:w-auto flex items-center justify-between gap-3 rounded-none border border-zinc-700 bg-black px-3 py-2 text-xs font-semibold text-white hover:border-red-600 transition-colors uppercase cursor-pointer"
-                  title="Wyszukaj ćwiczenie do wykresu"
-                >
-                  <div className="flex items-center gap-2 truncate text-left">
-                    <Search className="h-3.5 w-3.5 text-red-500 shrink-0" />
-                    <span className="truncate max-w-[180px] sm:max-w-xs font-bold text-white">
-                      {currentExerciseObj?.name ?? 'Wybierz ćwiczenie'}
-                    </span>
-                    {currentExerciseObj && (
-                      <span className="text-[10px] text-zinc-400 font-normal shrink-0">
-                        ({currentExerciseObj.muscle_group})
-                      </span>
-                    )}
-                  </div>
-                  <ChevronDown className="h-3.5 w-3.5 text-zinc-400 shrink-0 ml-1" />
-                </button>
-              </div>
-
-              {/* Wykres Recharts */}
-              <div className="mt-4 pt-2">
-                {exerciseChartData.length === 0 ? (
-                  <div className="py-10 px-6 text-center rounded-none bg-black/60 border border-zinc-800 flex flex-col items-center justify-center">
-                    <p className="text-sm font-semibold text-zinc-300 max-w-sm mx-auto leading-relaxed text-balance">
-                      Brak danych treningowych dla{' '}
-                      <span className="text-white font-bold">{currentExerciseObj?.name ?? 'wybranego ćwiczenia'}</span>.
-                    </p>
-                    <p className="mt-2 text-xs text-zinc-500 max-w-xs mx-auto leading-relaxed">
-                      Wykonaj serię w zakładce Trening, aby wygenerować wykres.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="w-full h-64 -ml-2 select-none outline-none focus:outline-none">
-                    <ResponsiveContainer width="100%" height="100%" className="outline-none focus:outline-none select-none">
-                      <LineChart
-                        data={exerciseChartData}
-                        margin={{ top: 15, right: 15, left: -10, bottom: 5 }}
-                        style={{ outline: 'none' }}
-                        tabIndex={-1}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                        <XAxis
-                          dataKey="shortDate"
-                          tick={{ fontSize: 11, fill: '#a1a1aa' }}
-                          stroke="#52525b"
-                          tickLine={false}
-                        />
-                        <YAxis
-                          domain={[(dataMin: number) => Math.max(0, Math.floor(dataMin - 20)), (dataMax: number) => Math.ceil(dataMax + 20)]}
-                          tick={{ fontSize: 11, fill: '#a1a1aa' }}
-                          stroke="#52525b"
-                          tickLine={false}
-                          unit=" kg"
-                        />
-                        <Tooltip content={<CustomChartTooltip />} />
-                        <Line
-                          type="monotone"
-                          dataKey="volume"
-                          name="Objętość serii"
-                          stroke="#dc2626"
-                          strokeWidth={2.5}
-                          dot={{
-                            r: 4.5,
-                            fill: '#991b1b',
-                            stroke: '#09090b',
-                            strokeWidth: 2,
-                          }}
-                          activeDot={{
-                            r: 6.5,
-                            fill: '#ef4444',
-                            stroke: '#09090b',
-                            strokeWidth: 2,
-                          }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 space-y-4 shadow-lg shadow-black/50 w-full max-w-full overflow-hidden box-border">
+          {/* SEKCJA DANE -> MASA CIAŁA */}
+          {dataSubTab === 'weight' && (
+            <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border border-zinc-800/80 space-y-4 shadow-md shadow-black/40 w-full max-w-full overflow-hidden box-border">
               <div className="flex items-baseline justify-between">
                 <div>
                   <span className="text-xs font-semibold text-red-500 uppercase tracking-wider">
                     Ostatni pomiar masy ciała
                   </span>
-                  <div className="mt-1 flex items-baseline gap-1.5">
+                  <div className="mt-1 flex items-baseline gap-1.5 tabular-nums">
                     <span className="text-3xl font-bold text-white">
                       {bodyWeights.length > 0 ? bodyWeights[bodyWeights.length - 1].weight : '—'}
                     </span>
@@ -669,7 +825,7 @@ export const StatsView: React.FC = () => {
 
               {/* Wykres wagi */}
               {bodyWeights.length < 2 ? (
-                <div className="py-8 text-center text-xs text-zinc-400 rounded-none bg-black border-2 border-dashed border-zinc-800">
+                <div className="py-8 px-4 text-center text-xs text-zinc-400 rounded-none bg-black/25">
                   Wprowadź co najmniej 2 pomiary wagi, aby zobaczyć wykres trendu.
                 </div>
               ) : (
@@ -723,8 +879,9 @@ export const StatsView: React.FC = () => {
                 </div>
               )}
 
+              <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
               {/* Formularz wprowadzania wagi - zoptymalizowany dla urządzeń mobilnych */}
-              <form onSubmit={handleSaveWeight} className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t-2 border-zinc-800 w-full min-w-0 max-w-full box-border">
+              <form onSubmit={handleSaveWeight} className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 w-full min-w-0 max-w-full box-border">
                 <div className="w-full min-w-0">
                   <label className="block text-xs font-medium text-zinc-300 mb-1">
                     Data pomiaru
@@ -763,7 +920,7 @@ export const StatsView: React.FC = () => {
 
               {/* Historia wpisów wagi */}
               {bodyWeights.length > 0 && (
-                <div className="divide-y-2 divide-zinc-900 text-xs max-h-48 overflow-y-auto pt-2">
+                <div className="divide-y divide-zinc-800/50 text-xs max-h-48 overflow-y-auto pt-1">
                   {bodyWeights
                     .slice()
                     .reverse()
@@ -775,7 +932,7 @@ export const StatsView: React.FC = () => {
                           key={entry.id}
                           className="flex items-center justify-between py-2 px-1 hover:bg-zinc-900/60 rounded-none transition-colors"
                         >
-                          <span className="text-zinc-400 font-sans">{entry.date}</span>
+                          <span className="text-zinc-400 font-sans tabular-nums">{entry.date}</span>
                           <div className="flex items-center gap-2">
                             {isEditing ? (
                               <div className="flex items-center gap-1.5 animate-in fade-in duration-150">
@@ -818,7 +975,7 @@ export const StatsView: React.FC = () => {
                               </div>
                             ) : (
                               <>
-                                <span className="font-bold text-white font-sans">{entry.weight} kg</span>
+                                <span className="font-bold text-white font-sans tabular-nums">{entry.weight} kg</span>
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -848,15 +1005,393 @@ export const StatsView: React.FC = () => {
               )}
             </div>
           )}
-        </div>
-      )}
 
-      {/* SUBZAKŁADKA 2: MAKSY (WYKRES LINIOWY 1RM, RĘCZNE DODAWAJIE I PODSUMOWANIE) */}
-      {subTab === 'maxes' && (
-        <div className="space-y-4">
+          {/* SEKCJA DANE -> POMIARY (WŁASNE POMIARY DODAWANE PRZEZ UŻYTKOWNIKA) */}
+          {dataSubTab === 'measurements' && (
+            <div className="space-y-4">
+              {measurementTypes.length === 0 ? (
+                <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-6 text-center border border-zinc-800/80 shadow-md shadow-black/40 space-y-4">
+                  <div className="space-y-1.5">
+                    <h3 className="text-base font-bold text-white uppercase tracking-wide">
+                      Własne pomiary
+                    </h3>
+                    <p className="text-xs text-zinc-400 max-w-sm mx-auto leading-relaxed">
+                      Dodawaj własne pomiary ciała (np. obwód bicepsa w cm, obwód klatki w cm, obwód pasa w cm) i śledź zmiany na wykresie.
+                    </p>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMeasurementTypeError(null);
+                        setNewMeasurementName('');
+                        setNewMeasurementUnit('cm');
+                        setIsAddMeasurementModalOpen(true);
+                      }}
+                      style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
+                      className="inline-flex items-center gap-1.5 rounded-none bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider px-5 py-2.5 text-xs transition-colors cursor-pointer"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>Dodaj pierwszy pomiar</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Główna karta wybranego pomiaru */}
+                  {activeMeasurementType && (
+                    <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border border-zinc-800/80 space-y-4 shadow-md shadow-black/40 w-full max-w-full overflow-hidden box-border">
+                      {/* Wybór pomiaru + Dodaj nowy typ pomiaru */}
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+                        <div className="flex items-center gap-2 w-full">
+                          <div className="relative flex-1">
+                            <select
+                              value={activeMeasurementType.id ?? ''}
+                              onChange={(e) => handleSelectMeasurementType(Number(e.target.value))}
+                              className="w-full appearance-none rounded-none border border-zinc-700 bg-black px-3 py-2 pr-8 text-xs font-bold text-white focus:border-red-600 focus:outline-none uppercase"
+                            >
+                              {measurementTypes.map((mt) => (
+                                <option key={mt.id} value={mt.id}>
+                                  {mt.name} ({mt.unit})
+                                </option>
+                              ))}
+                            </select>
+                            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMeasurementTypeError(null);
+                              setNewMeasurementName('');
+                              setNewMeasurementUnit('cm');
+                              setIsAddMeasurementModalOpen(true);
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-none border border-red-700 bg-red-950/70 hover:bg-red-900 px-3 py-2 text-xs font-bold text-white uppercase tracking-wider transition-colors shrink-0 cursor-pointer"
+                            title="Dodaj nowy własny pomiar"
+                          >
+                            <Plus className="h-3.5 w-3.5 text-red-400" />
+                            <span>Dodaj</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
+
+                      {/* Ostatni pomiar + usuwanie typu pomiaru */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <span className="text-xs font-semibold text-red-500 uppercase tracking-wider">
+                            Ostatni pomiar · {activeMeasurementType.name}
+                          </span>
+                          <div className="mt-1 flex items-baseline gap-2 tabular-nums">
+                            <span className="text-3xl font-bold text-white">
+                              {activeMeasurementEntries.length > 0
+                                ? activeMeasurementEntries[activeMeasurementEntries.length - 1].value
+                                : '—'}
+                            </span>
+                            <span className="text-sm font-bold text-zinc-400">
+                              {activeMeasurementType.unit}
+                            </span>
+                            {activeMeasurementEntries.length >= 2 && (() => {
+                              const prev = activeMeasurementEntries[activeMeasurementEntries.length - 2].value;
+                              const curr = activeMeasurementEntries[activeMeasurementEntries.length - 1].value;
+                              const diff = Math.round((curr - prev) * 10) / 10;
+                              const sign = diff > 0 ? '+' : '';
+                              return (
+                                <span
+                                  className={`text-xs font-semibold ${
+                                    diff > 0
+                                      ? 'text-emerald-400'
+                                      : diff < 0
+                                      ? 'text-rose-400'
+                                      : 'text-zinc-400'
+                                  }`}
+                                >
+                                  ({sign}{diff} {activeMeasurementType.unit})
+                                </span>
+                              );
+                            })()}
+                          </div>
+                        </div>
+
+                        {confirmDeleteMeasurementTypeId !== activeMeasurementType.id && (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteMeasurementTypeId(activeMeasurementType.id!)}
+                            className="inline-flex items-center gap-1 rounded-none px-2 py-1 text-[11px] font-bold text-zinc-400 hover:bg-zinc-800/50 hover:text-rose-400 transition-colors cursor-pointer shrink-0"
+                            title="Usuń ten pomiar i jego historię"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            <span>Usuń</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {confirmDeleteMeasurementTypeId === activeMeasurementType.id && (
+                        <div className="space-y-2 text-xs animate-in fade-in duration-150">
+                          <div className="h-px w-full bg-gradient-to-r from-transparent via-red-800/70 to-transparent" />
+                          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                            <span className="text-zinc-300">
+                              Usunąć pomiar „{activeMeasurementType.name}” i całą jego historię?
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteMeasurementType(activeMeasurementType.id!)}
+                                className="rounded-none bg-red-700 hover:bg-red-600 px-2.5 py-1 text-[11px] font-bold text-white uppercase cursor-pointer"
+                              >
+                                Tak, usuń
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteMeasurementTypeId(null)}
+                                className="rounded-none bg-black border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400 hover:text-white cursor-pointer"
+                              >
+                                Anuluj
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Wykres wybranego pomiaru */}
+                      {activeMeasurementEntries.length < 2 ? (
+                        <div className="py-8 text-center text-xs text-zinc-400 rounded-none bg-black/25 px-4">
+                          Wprowadź co najmniej 2 pomiary dla „{activeMeasurementType.name}”, aby zobaczyć wykres trendu.
+                        </div>
+                      ) : (
+                        <div className="w-full h-52 -ml-2 select-none outline-none focus:outline-none">
+                          <ResponsiveContainer width="100%" height="100%" className="outline-none focus:outline-none select-none">
+                            <LineChart
+                              data={activeMeasurementEntries.map((m) => ({
+                                date: m.date.slice(5),
+                                fullDate: m.date,
+                                value: m.value,
+                                unit: activeMeasurementType.unit,
+                              }))}
+                              margin={{ top: 10, right: 15, left: -10, bottom: 0 }}
+                              style={{ outline: 'none' }}
+                              tabIndex={-1}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                              <XAxis
+                                dataKey="date"
+                                tick={{ fontSize: 11, fill: '#a1a1aa' }}
+                                stroke="#3f3f46"
+                                tickLine={false}
+                              />
+                              <YAxis
+                                domain={['dataMin - 1', 'dataMax + 1']}
+                                tick={{ fontSize: 11, fill: '#a1a1aa' }}
+                                stroke="#3f3f46"
+                                tickLine={false}
+                                unit={` ${activeMeasurementType.unit}`}
+                              />
+                              <Tooltip content={<CustomMeasurementTooltip />} />
+                              <Line
+                                type="monotone"
+                                dataKey="value"
+                                stroke="#dc2626"
+                                strokeWidth={2.5}
+                                dot={{
+                                  r: 4.5,
+                                  fill: '#991b1b',
+                                  stroke: '#09090b',
+                                  strokeWidth: 2,
+                                }}
+                                activeDot={{
+                                  r: 6.5,
+                                  fill: '#ef4444',
+                                  stroke: '#09090b',
+                                  strokeWidth: 2,
+                                }}
+                              />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+
+                      <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
+                      {/* Formularz dodawania wpisu pomiaru */}
+                      <form onSubmit={handleSaveMeasurementEntry} className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 w-full min-w-0 max-w-full box-border">
+                        <div className="w-full min-w-0">
+                          <label className="block text-xs font-medium text-zinc-300 mb-1">
+                            Data pomiaru
+                          </label>
+                          <input
+                            type="date"
+                            required
+                            value={measurementDate}
+                            onChange={(e) => setMeasurementDate(e.target.value)}
+                            className="w-full max-w-full min-w-0 box-border rounded-none border border-zinc-700 bg-black px-2.5 py-1.5 text-xs text-white focus:border-red-600 focus:outline-none [color-scheme:dark] block"
+                          />
+                        </div>
+                        <div className="w-full min-w-0">
+                          <label className="block text-xs font-medium text-zinc-300 mb-1">
+                            Wartość ({activeMeasurementType.unit})
+                          </label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0.1"
+                            max="500"
+                            required
+                            placeholder="np. 40.5"
+                            value={measurementValue}
+                            onChange={(e) => setMeasurementValue(e.target.value)}
+                            className="w-full max-w-full min-w-0 box-border rounded-none border border-zinc-700 bg-black px-2.5 py-1.5 text-xs text-white placeholder-zinc-600 focus:border-red-600 focus:outline-none block"
+                          />
+                        </div>
+                        <div className="flex items-end w-full min-w-0">
+                          <button
+                            type="submit"
+                            style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
+                            className="w-full rounded-none bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider py-2 text-xs transition-colors cursor-pointer"
+                          >
+                            Zapisz pomiar
+                          </button>
+                        </div>
+                      </form>
+
+                      {/* Historia wpisów wybranego pomiaru */}
+                      {activeMeasurementEntries.length > 0 && (
+                        <div className="divide-y divide-zinc-800/50 text-xs max-h-48 overflow-y-auto pt-1">
+                          {activeMeasurementEntries
+                            .slice()
+                            .reverse()
+                            .map((entry) => {
+                              const isEditing = editingMeasurementId === entry.id;
+
+                              return (
+                                <div
+                                  key={entry.id}
+                                  className="flex items-center justify-between py-2 px-1 hover:bg-zinc-900/60 rounded-none transition-colors"
+                                >
+                                  <span className="text-zinc-400 font-sans tabular-nums">{entry.date}</span>
+                                  <div className="flex items-center gap-2">
+                                    {isEditing ? (
+                                      <div className="flex items-center gap-1.5 animate-in fade-in duration-150">
+                                        <input
+                                          type="number"
+                                          step="0.1"
+                                          min="0.1"
+                                          max="500"
+                                          value={editingMeasurementVal}
+                                          onChange={(e) => setEditingMeasurementVal(e.target.value)}
+                                          className="w-20 rounded-none bg-black border border-red-600 px-2 py-0.5 text-xs font-bold text-white focus:outline-none"
+                                          autoFocus
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              e.preventDefault();
+                                              handleSaveEditMeasurementEntry(entry.id);
+                                            }
+                                            if (e.key === 'Escape') {
+                                              setEditingMeasurementId(null);
+                                            }
+                                          }}
+                                        />
+                                        <span className="text-xs text-zinc-400 font-sans">
+                                          {activeMeasurementType.unit}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSaveEditMeasurementEntry(entry.id)}
+                                          className="rounded-none bg-red-700 hover:bg-red-600 p-1 text-white cursor-pointer transition-colors"
+                                          title="Zapisz nową wartość"
+                                        >
+                                          <Check className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingMeasurementId(null)}
+                                          className="rounded-none bg-black border border-zinc-800 p-1 text-zinc-400 hover:text-white cursor-pointer transition-colors"
+                                          title="Anuluj"
+                                        >
+                                          <X className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <span className="font-bold text-white font-sans tabular-nums">
+                                          {entry.value} {activeMeasurementType.unit}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setEditingMeasurementId(entry.id!);
+                                            setEditingMeasurementVal(String(entry.value));
+                                          }}
+                                          className="text-zinc-500 hover:text-zinc-200 p-1 cursor-pointer transition-colors"
+                                          title="Edytuj pomiar"
+                                        >
+                                          <Pencil className="h-3 w-3" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteMeasurementEntry(entry.id)}
+                                          className="text-zinc-500 hover:text-rose-400 p-1 cursor-pointer transition-colors"
+                                          title="Usuń pomiar"
+                                        >
+                                          <Trash2 className="h-3 w-3" />
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Lista wszystkich dodanych pomiarów (szybkie przełączanie) */}
+                  <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border border-zinc-800/80 shadow-md shadow-black/40 space-y-2.5">
+                    <h4 className="text-xs font-bold text-zinc-300 uppercase tracking-wider">
+                      Twoje pomiary ({measurementTypes.length})
+                    </h4>
+                    <div className="divide-y divide-zinc-800/60">
+                      {measurementTypes.map((mt) => {
+                        const entries = measurementEntries.filter((e) => e.type_id === mt.id);
+                        const latest = entries.length > 0 ? entries[entries.length - 1] : null;
+                        const isSelected = activeMeasurementType?.id === mt.id;
+
+                        return (
+                          <button
+                            key={mt.id}
+                            type="button"
+                            onClick={() => mt.id && handleSelectMeasurementType(mt.id)}
+                            className={`w-full flex items-center justify-between gap-3 py-2.5 px-2 text-left transition-colors cursor-pointer ${
+                              isSelected ? 'bg-red-950/30 text-white' : 'hover:bg-zinc-900/60 text-zinc-300'
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs font-bold uppercase tracking-wide truncate">
+                                {mt.name}
+                              </div>
+                              <div className="text-[11px] text-zinc-500 tabular-nums mt-0.5">
+                                {latest ? `Ostatni: ${latest.date}` : 'Brak wpisów'}
+                              </div>
+                            </div>
+                            <div className="text-sm font-bold tabular-nums shrink-0 text-white">
+                              {latest ? `${latest.value} ${mt.unit}` : `— ${mt.unit}`}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* SEKCJA DANE -> MAKSY (WYKRES LINIOWY 1RM, RĘCZNE DODAWANIE I PODSUMOWANIE) */}
+          {dataSubTab === 'maxes' && (
+            <div className="space-y-4">
           {/* 1. WYKRES LINIOWY PROGRESJI 1RM */}
-          <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 shadow-lg shadow-black/50">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b-2 border-zinc-800 gap-3">
+          <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border border-zinc-800/80 shadow-md shadow-black/40 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <h3 className="text-base font-bold text-white tracking-wide uppercase">
                   Wykres maksów (1RM)
@@ -896,10 +1431,12 @@ export const StatsView: React.FC = () => {
               </div>
             </div>
 
+            <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
+
             {/* Wykres Recharts dla 1RM */}
-            <div className="mt-4 pt-1">
+            <div>
               {maxProgressionChartData.length === 0 ? (
-                <div className="py-10 px-6 text-center rounded-none bg-black/60 border border-zinc-800 flex flex-col items-center justify-center">
+                <div className="py-10 px-6 text-center rounded-none bg-black/25 flex flex-col items-center justify-center">
                   <p className="text-sm font-semibold text-zinc-300 max-w-sm mx-auto leading-relaxed text-balance">
                     {currentMaxExerciseObj ? (
                       <>
@@ -965,15 +1502,16 @@ export const StatsView: React.FC = () => {
           </div>
 
           {/* 2. FORMULARZ: NOWY REKORD */}
-          <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 space-y-3 shadow-lg shadow-black/50">
-            <div className="flex items-center justify-between pb-2 border-b-2 border-zinc-800">
+          <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border border-zinc-800/80 space-y-3 shadow-md shadow-black/40">
+            <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-red-500 uppercase tracking-wider">
                 NOWY REKORD
               </span>
             </div>
+            <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
 
             {manualSuccessMsg && (
-              <div className="flex items-center gap-2 rounded-none bg-emerald-950/70 p-2.5 text-xs font-semibold text-emerald-300 border-2 border-emerald-800">
+              <div className="flex items-center gap-2 rounded-none bg-emerald-950/70 p-2.5 text-xs font-semibold text-emerald-300 border border-emerald-800">
                 <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
                 <span>{manualSuccessMsg}</span>
               </div>
@@ -1079,7 +1617,7 @@ export const StatsView: React.FC = () => {
             </div>
 
             {maxesSummaryList.length === 0 ? (
-              <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-6 text-center border-2 border-zinc-700/80 shadow-lg shadow-black/50">
+              <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-6 text-center border border-zinc-800/80 shadow-md shadow-black/40">
                 <p className="text-sm font-semibold text-zinc-300">
                   Brak dodanych ćwiczeń
                 </p>
@@ -1088,90 +1626,93 @@ export const StatsView: React.FC = () => {
                 </p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {maxesSummaryList.map((item) => {
+              <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border border-zinc-800/80 shadow-md shadow-black/40">
+                {maxesSummaryList.map((item, idx) => {
                   const hasData = item.best1RM !== null;
                   const isConfirmingDelete = confirmDeleteExerciseId === item.exercise.id;
-                  const CategoryIcon = getCategoryIcon(item.exercise.muscle_group);
 
                   return (
-                    <div
-                      key={item.exercise.id}
-                      className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 border-2 border-zinc-700/80 shadow-lg shadow-black/50 space-y-3"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-3 min-w-0 flex-1">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-none bg-black border border-zinc-800 shrink-0 mt-0.5 overflow-hidden">
-                            <CategoryIcon className="w-6 h-6 object-contain opacity-85" />
+                    <React.Fragment key={item.exercise.id}>
+                      {idx > 0 && (
+                        <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
+                      )}
+                      <div className="py-3.5 first:pt-0 last:pb-0 space-y-2.5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-3 min-w-0 flex-1">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-none bg-black/80 border border-zinc-800/90 shrink-0 mt-0.5 overflow-hidden">
+                              <CategoryIcon muscleGroup={item.exercise.muscle_group} className="w-6 h-6 object-contain opacity-85" />
+                            </div>
+                            <div className="min-w-0 flex-1 flex flex-col justify-center gap-1">
+                              <h4 className="text-sm font-bold text-white tracking-wide uppercase break-words leading-snug">
+                                {item.exercise.name}
+                              </h4>
+                              <div className="flex flex-wrap items-center gap-3 pt-0.5">
+                                {hasData ? (
+                                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-red-400 font-sans tracking-tight shrink-0 tabular-nums">
+                                    <Flame className="h-3.5 w-3.5 fill-red-600 text-red-500 shrink-0" />
+                                    <span>{item.best1RM} kg 1RM</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-xs font-semibold text-zinc-500 font-sans tracking-tight shrink-0">
+                                    Brak wpisów
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                          <div className="min-w-0 flex-1 flex flex-col justify-center gap-1.5">
-                            <h4 className="text-sm font-bold text-white tracking-wide uppercase break-words leading-snug">
-                              {item.exercise.name}
-                            </h4>
-                            <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                              {hasData ? (
-                                <span className="inline-flex items-center gap-1.5 h-6 rounded-none bg-red-950 border border-red-700 px-2 text-xs font-bold text-red-300 font-sans tracking-tight shrink-0">
-                                  <Flame className="h-3 w-3 fill-red-600 text-red-500 shrink-0" />
-                                  <span>{item.best1RM} kg 1RM</span>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center h-6 rounded-none bg-black border border-zinc-800 px-2 text-xs font-semibold text-zinc-400 font-sans tracking-tight shrink-0">
-                                  <span>Brak wpisów</span>
-                                </span>
-                              )}
 
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteExerciseId(item.exercise.id!)}
+                            className="inline-flex items-center gap-1 h-7 rounded-none px-2 text-xs font-bold text-zinc-500 hover:bg-zinc-800/50 hover:text-rose-400 transition-colors cursor-pointer shrink-0"
+                            title="Usuń ćwiczenie i jego rekordy z listy maksów"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline">Usuń</span>
+                          </button>
+                        </div>
+
+                        {hasData && (
+                          <div className="text-[11px] text-zinc-400 flex items-center justify-between pl-12">
+                            <span>{item.source}</span>
+                            <span className="font-mono text-[11px]">{item.date}</span>
+                          </div>
+                        )}
+
+                        {isConfirmingDelete && (
+                          <div className="pt-2 flex items-center justify-between text-xs animate-in fade-in duration-150 pl-12">
+                            <span className="text-zinc-300">Usunąć z podsumowania rekordów?</span>
+                            <div className="flex items-center gap-2">
                               <button
                                 type="button"
-                                onClick={() => setConfirmDeleteExerciseId(item.exercise.id!)}
-                                className="inline-flex items-center gap-1 h-6 rounded-none border border-zinc-800 bg-black px-2 text-xs font-bold text-zinc-400 hover:border-red-900 hover:text-rose-400 transition-colors cursor-pointer shrink-0"
-                                title="Usuń ćwiczenie i jego rekordy z listy maksów"
+                                onClick={async () => {
+                                  await handleDeleteMaxRecord(item);
+                                  handleRemoveTrackedMaxExercise(item.exercise.id!);
+                                  setConfirmDeleteExerciseId(null);
+                                }}
+                                className="rounded-none bg-red-700 hover:bg-red-600 px-2.5 py-1 text-[11px] font-bold text-white uppercase cursor-pointer"
                               >
-                                <Trash2 className="h-3 w-3" />
-                                <span>Usuń</span>
+                                Tak, usuń
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteExerciseId(null)}
+                                className="rounded-none bg-black border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400 hover:text-white cursor-pointer"
+                              >
+                                Anuluj
                               </button>
                             </div>
                           </div>
-                        </div>
+                        )}
                       </div>
-
-                      {hasData && (
-                        <div className="pt-2 border-t-2 border-zinc-800 text-xs text-zinc-400 flex items-center justify-between">
-                          <span>{item.source}</span>
-                          <span className="font-mono text-[11px]">{item.date}</span>
-                        </div>
-                      )}
-
-                      {isConfirmingDelete && (
-                        <div className="pt-2 border-t-2 border-zinc-800 flex items-center justify-between text-xs animate-in fade-in duration-150">
-                          <span className="text-zinc-300">Usunąć z podsumowania rekordów?</span>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                await handleDeleteMaxRecord(item);
-                                handleRemoveTrackedMaxExercise(item.exercise.id!);
-                                setConfirmDeleteExerciseId(null);
-                              }}
-                              className="rounded-none bg-red-700 hover:bg-red-600 px-2.5 py-1 text-[11px] font-bold text-white uppercase cursor-pointer"
-                            >
-                              Tak, usuń
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setConfirmDeleteExerciseId(null)}
-                              className="rounded-none bg-black border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400 hover:text-white cursor-pointer"
-                            >
-                              Anuluj
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    </React.Fragment>
                   );
                 })}
               </div>
             )}
           </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1186,10 +1727,10 @@ export const StatsView: React.FC = () => {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg bg-zinc-950 border-2 border-zinc-700 p-4 sm:p-5 shadow-2xl space-y-3.5 max-h-[85vh] flex flex-col"
+            className="w-full max-w-lg bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 border border-zinc-800 p-4 sm:p-5 shadow-2xl space-y-3.5 max-h-[85vh] flex flex-col"
           >
             {/* Nagłówek modalu */}
-            <div className="flex items-center justify-between pb-2 border-b-2 border-zinc-800">
+            <div className="flex items-center justify-between pb-1">
               <div className="flex items-center gap-2">
                 <Search className="h-4 w-4 text-red-500" />
                 <h3 className="text-sm font-bold text-white uppercase tracking-wider">
@@ -1205,6 +1746,7 @@ export const StatsView: React.FC = () => {
                 <X className="h-4 w-4" />
               </button>
             </div>
+            <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
 
             {/* Pole wyszukiwania */}
             <div className="relative">
@@ -1312,10 +1854,10 @@ export const StatsView: React.FC = () => {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg bg-zinc-950 border-2 border-zinc-700 p-4 sm:p-5 shadow-2xl space-y-3.5 max-h-[85vh] flex flex-col"
+            className="w-full max-w-lg bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 border border-zinc-800 p-4 sm:p-5 shadow-2xl space-y-3.5 max-h-[85vh] flex flex-col"
           >
             {/* Nagłówek modalu */}
-            <div className="flex items-center justify-between pb-2 border-b-2 border-zinc-800">
+            <div className="flex items-center justify-between pb-1">
               <div className="flex items-center gap-2">
                 <Plus className="h-4 w-4 text-red-500" />
                 <div>
@@ -1336,6 +1878,7 @@ export const StatsView: React.FC = () => {
                 <X className="h-4 w-4" />
               </button>
             </div>
+            <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
 
             {/* Pole wyszukiwania */}
             <div className="relative">
@@ -1381,7 +1924,7 @@ export const StatsView: React.FC = () => {
             </div>
 
             {/* Lista wyników */}
-            <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 divide-y divide-zinc-900 min-h-[220px]">
+            <div className="flex-1 overflow-y-auto pr-1 divide-y divide-zinc-800/60 min-h-[220px]">
               {filteredExercisesForMaxSearch.length === 0 ? (
                 <div className="py-12 text-center text-xs text-zinc-500">
                   Nie znaleziono ćwiczeń dla zapytania „{maxSearchQuery}”.
@@ -1396,10 +1939,10 @@ export const StatsView: React.FC = () => {
                       type="button"
                       disabled={isAlreadyTracked}
                       onClick={() => ex.id && handleAddTrackedMaxExercise(ex.id)}
-                      className={`w-full text-left p-2.5 rounded-none transition-colors flex items-center justify-between gap-3 border ${
+                      className={`w-full text-left py-2.5 px-2 rounded-none transition-colors flex items-center justify-between gap-3 ${
                         isAlreadyTracked
-                          ? 'bg-zinc-900/30 border-zinc-800/60 text-zinc-500 cursor-not-allowed opacity-60'
-                          : 'bg-black/60 hover:bg-zinc-900 border-zinc-800 hover:border-red-600 text-zinc-200 cursor-pointer'
+                          ? 'text-zinc-500 cursor-not-allowed opacity-60'
+                          : 'hover:bg-zinc-900/60 text-zinc-200 cursor-pointer'
                       }`}
                     >
                       <div className="min-w-0 flex-1">
@@ -1442,6 +1985,133 @@ export const StatsView: React.FC = () => {
           </div>
         </div>
       )}
+      {/* MODAL: DODAJ WŁASNY POMIAR */}
+      {isAddMeasurementModalOpen && (
+        <div
+          onClick={() => setIsAddMeasurementModalOpen(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-sm animate-in fade-in duration-150"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 border border-zinc-800 p-4 sm:p-5 shadow-2xl space-y-4"
+          >
+            <div className="flex items-center justify-between pb-1">
+              <div className="flex items-center gap-2">
+                <Plus className="h-4 w-4 text-red-500" />
+                <div>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                    Dodaj własny pomiar
+                  </h3>
+                  <span className="text-[10px] text-zinc-400 block">
+                    Utwórz kategorię pomiaru do regularnego śledzenia
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddMeasurementModalOpen(false)}
+                className="text-zinc-400 hover:text-white p-1 cursor-pointer transition-colors"
+                title="Zamknij"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
+
+            <form onSubmit={handleCreateMeasurementType} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1">
+                  Nazwa pomiaru
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  required
+                  placeholder="np. Obwód bicepsa"
+                  value={newMeasurementName}
+                  onChange={(e) => {
+                    setNewMeasurementName(e.target.value);
+                    setMeasurementTypeError(null);
+                  }}
+                  className="w-full rounded-none border border-zinc-700 bg-black px-3 py-2 text-xs font-medium text-white placeholder-zinc-500 focus:border-red-600 focus:outline-none"
+                />
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {['Obwód bicepsa', 'Obwód klatki', 'Obwód pasa', 'Obwód uda'].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => {
+                        setNewMeasurementName(preset);
+                        setNewMeasurementUnit('cm');
+                        setMeasurementTypeError(null);
+                      }}
+                      className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider bg-black border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600 cursor-pointer transition-colors"
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1">
+                  Jednostka pomiaru
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    required
+                    maxLength={10}
+                    placeholder="cm"
+                    value={newMeasurementUnit}
+                    onChange={(e) => setNewMeasurementUnit(e.target.value)}
+                    className="w-24 rounded-none border border-zinc-700 bg-black px-3 py-2 text-xs font-bold text-white placeholder-zinc-500 focus:border-red-600 focus:outline-none"
+                  />
+                  <div className="flex items-center gap-1.5">
+                    {['cm', 'mm', '%', 'kg'].map((u) => (
+                      <button
+                        key={u}
+                        type="button"
+                        onClick={() => setNewMeasurementUnit(u)}
+                        className={`px-2.5 py-1.5 text-xs font-bold border transition-colors cursor-pointer ${
+                          newMeasurementUnit.trim() === u
+                            ? 'bg-red-600 text-white border-red-500'
+                            : 'bg-black text-zinc-400 border-zinc-800 hover:text-white'
+                        }`}
+                      >
+                        {u}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {measurementTypeError && (
+                <div className="p-2 bg-red-950/70 border border-red-700 text-xs font-semibold text-red-300">
+                  {measurementTypeError}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setIsAddMeasurementModalOpen(false)}
+                  className="rounded-none bg-black border border-zinc-800 px-3 py-2 text-xs text-zinc-400 hover:text-white cursor-pointer"
+                >
+                  Anuluj
+                </button>
+                <button
+                  type="submit"
+                  style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
+                  className="rounded-none bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider px-4 py-2 text-xs transition-colors cursor-pointer"
+                >
+                  Dodaj pomiar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1452,13 +2122,13 @@ function CustomChartTooltip({ active, payload }: any) {
     const data = payload[0].payload;
     return (
       <div className="rounded-none bg-black p-2.5 border-2 border-zinc-700 text-xs shadow-2xl">
-        <div className="font-semibold text-white mb-0.5">{data.date}</div>
-        <div className="text-red-500 font-bold">
-          Objętość serii: {data.volume} kg
+        <div className="font-semibold text-white mb-0.5 tabular-nums">{data.date}</div>
+        <div className="text-red-500 font-bold tabular-nums">
+          Śr. objętość serii: {data.volume} kg
         </div>
-        {data.reps && (
-          <div className="text-zinc-400 text-[11px]">
-            Seria: {data.weight} kg × {data.reps} (RIR {data.rir})
+        {data.setsCount > 0 && (
+          <div className="text-zinc-400 text-[11px] tabular-nums mt-0.5">
+            {data.setsCount} {getSetsWord(data.setsCount)} · śr. {data.avgWeight} kg × {data.avgReps}
           </div>
         )}
       </div>
@@ -1499,6 +2169,22 @@ function CustomWeightTooltip({ active, payload }: any) {
       <div className="rounded-none bg-black p-2.5 border-2 border-zinc-700 text-xs shadow-2xl">
         <div className="text-zinc-400 text-[11px]">{data.fullDate}</div>
         <div className="font-bold text-red-500 mt-0.5">{data.weight} kg</div>
+      </div>
+    );
+  }
+  return null;
+}
+
+// Custom Tooltip dla własnych pomiarów ciała w Dark Mode
+function CustomMeasurementTooltip({ active, payload }: any) {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div className="rounded-none bg-black p-2.5 border-2 border-zinc-700 text-xs shadow-2xl">
+        <div className="text-zinc-400 text-[11px] tabular-nums">{data.fullDate}</div>
+        <div className="font-bold text-red-500 mt-0.5 tabular-nums">
+          {data.value} {data.unit}
+        </div>
       </div>
     );
   }

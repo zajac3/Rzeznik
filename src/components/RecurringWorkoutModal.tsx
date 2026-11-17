@@ -294,12 +294,12 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden touch-pan-y overscroll-contain rounded-none border-2 border-zinc-700 bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 space-y-4 shadow-2xl text-zinc-100 cursor-default"
+        className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden touch-pan-y overscroll-contain rounded-none border border-zinc-800 bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 space-y-4 shadow-2xl text-zinc-100 cursor-default"
       >
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b-2 border-zinc-800">
+        <div className="flex items-center justify-between pb-1">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-none bg-black border border-red-800 text-red-500">
+            <div className="flex h-8 w-8 items-center justify-center rounded-none bg-black/70 border border-red-900/70 text-red-500">
               <Repeat className="h-4 w-4" />
             </div>
             <div>
@@ -314,11 +314,12 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-none border border-zinc-800 bg-black p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white cursor-pointer"
+            className="rounded-none p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white cursor-pointer transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
+        <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
 
         {statusFeedback && (
           <div className="p-3 bg-red-950/80 border border-red-700 text-red-200 text-xs flex items-center justify-between gap-2">
@@ -366,7 +367,7 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
                 )}
               </label>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto p-1 bg-black/60 border border-zinc-800">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-36 overflow-y-auto">
                 {routineDays.map((rd) => {
                   const isSelected = selectedRoutineDayId === rd.id;
                   const exCount = routineExercises.filter((re) => re.routine_day_id === rd.id).length;
@@ -377,8 +378,8 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
                       onClick={() => setSelectedRoutineDayId(rd.id!)}
                       className={`flex items-center justify-between p-2.5 text-left rounded-none border transition-colors cursor-pointer ${
                         isSelected
-                          ? 'border-2 border-red-600 bg-gradient-to-r from-red-950 to-black text-white font-bold shadow-[0_0_8px_rgba(220,38,38,0.25)]'
-                          : 'border-zinc-800 bg-black hover:border-zinc-700 text-zinc-300'
+                          ? 'border-red-600 bg-gradient-to-r from-red-950/90 to-black text-white font-bold'
+                          : 'border-zinc-800/70 bg-black/40 hover:border-zinc-700 text-zinc-300'
                       }`}
                     >
                       <div className="min-w-0 pr-1">
@@ -405,8 +406,8 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
                   onClick={() => setMode('weekdays')}
                   className={`py-2 px-3 text-xs font-bold uppercase tracking-wider rounded-none border text-center transition-colors cursor-pointer ${
                     mode === 'weekdays'
-                      ? 'border-2 border-red-600 bg-gradient-to-r from-red-950 to-zinc-950 text-white font-bold'
-                      : 'border-zinc-800 bg-black text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                      ? 'border-red-600 bg-gradient-to-r from-red-950/90 to-zinc-950 text-white font-bold'
+                      : 'border-zinc-800/80 bg-black/50 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
                   }`}
                 >
                   Dni tygodnia
@@ -417,8 +418,8 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
                   onClick={() => setMode('interval')}
                   className={`py-2 px-3 text-xs font-bold uppercase tracking-wider rounded-none border text-center transition-colors cursor-pointer ${
                     mode === 'interval'
-                      ? 'border-2 border-red-600 bg-gradient-to-r from-red-950 to-zinc-950 text-white font-bold'
-                      : 'border-zinc-800 bg-black text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                      ? 'border-red-600 bg-gradient-to-r from-red-950/90 to-zinc-950 text-white font-bold'
+                      : 'border-zinc-800/80 bg-black/50 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
                   }`}
                 >
                   Interwał
@@ -427,7 +428,7 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
 
               {/* Konfiguracja trybu: Dni tygodnia (TYLKO przyciski dni, BEZ skrótów) */}
               {mode === 'weekdays' && (
-                <div className="p-3 bg-black border border-zinc-800 space-y-2.5 animate-in fade-in duration-100">
+                <div className="pt-1 space-y-2 animate-in fade-in duration-100">
                   <span className="text-[11px] text-zinc-400 block font-semibold">
                     Zaznacz dni treningowe w tygodniu:
                   </span>
@@ -443,8 +444,8 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
                           onClick={() => toggleWeekday(dayIndex)}
                           className={`h-9 min-w-0 w-full flex flex-col items-center justify-center rounded-none border text-xs font-bold transition-all cursor-pointer ${
                             isSelected
-                              ? 'border-2 border-red-600 bg-red-950 text-white shadow-[0_0_8px_rgba(220,38,38,0.4)]'
-                              : 'border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                              ? 'border-red-600 bg-red-950 text-white shadow-[0_0_8px_rgba(220,38,38,0.3)]'
+                              : 'border-zinc-800/70 bg-black/40 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
                           }`}
                         >
                           <span>{label}</span>
@@ -457,8 +458,8 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
 
               {/* Konfiguracja trybu: Interwał (TYLKO stepper, BEZ gotowych przycisków "co x dni") */}
               {mode === 'interval' && (
-                <div className="p-3 bg-black border border-zinc-800 space-y-3 animate-in fade-in duration-100">
-                  <div className="flex items-center justify-between p-2 bg-zinc-950 border border-zinc-800">
+                <div className="pt-1 animate-in fade-in duration-100">
+                  <div className="flex items-center justify-between py-2">
                     <span className="text-xs text-zinc-300 font-bold uppercase">
                       Odstęp między treningami:
                     </span>
@@ -526,8 +527,10 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
               </div>
             </div>
 
-            {/* 4. KONFLIKTY I BEZPIECZEŃSTWO */}
-            <div className="p-3 bg-black/80 border border-zinc-800 space-y-2">
+            <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
+
+            {/* 4. KONFLIKTY I BEZPIECZEŃWO */}
+            <div className="space-y-2 py-0.5">
               <label className="flex items-start gap-2.5 cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -545,20 +548,22 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
                 </div>
               </label>
 
-              <div className="pt-1 text-[10px] text-zinc-500 flex items-center gap-1.5 border-t border-zinc-900">
+              <div className="pt-1 text-[10px] text-zinc-500 flex items-center gap-1.5">
                 <span className="text-emerald-500 font-bold">✓</span>
                 <span>Ukończone treningi (wykonane serie) nigdy nie są nadpisywane.</span>
               </div>
             </div>
 
+            <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
+
             {/* 5. PODGLĄD WYGENEROWANEGO CYKLU */}
-            <div className="p-3 bg-gradient-to-b from-zinc-950 to-black border border-zinc-800 space-y-2">
+            <div className="space-y-2 py-0.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
                   <CalendarIcon className="h-3.5 w-3.5 text-red-500" />
                   <span>Wygenerowane sesje:</span>
                 </span>
-                <span className="text-xs font-bold text-red-500 bg-red-950/60 border border-red-800/80 px-2 py-0.5">
+                <span className="text-xs font-bold text-red-400">
                   {generatedDates.length} {generatedDates.length === 1 ? 'trening' : 'treningów'}
                 </span>
               </div>
@@ -569,7 +574,7 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
                 </p>
               ) : (
                 <div className="space-y-1.5">
-                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto overflow-x-hidden touch-pan-y p-1 bg-zinc-950/80 border border-zinc-900">
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto overflow-x-hidden touch-pan-y py-1">
                     {generatedDates.slice(0, 16).map((d) => {
                       const dateObj = parseISODate(d);
                       const dayName = POLISH_DAYS_SHORT[dateObj.getDay() === 0 ? 6 : dateObj.getDay() - 1];
@@ -582,8 +587,8 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
                           key={d}
                           className={`text-[10px] px-1.5 py-0.5 border font-bold ${
                             hasConflict
-                              ? 'bg-amber-950/40 border-amber-700/80 text-amber-200'
-                              : 'bg-black border-zinc-800 text-zinc-300'
+                              ? 'bg-amber-950/40 border-amber-700/70 text-amber-200'
+                              : 'bg-black/60 border-zinc-800/80 text-zinc-300'
                           }`}
                           title={hasConflict ? 'W ten dzień istnieje już trening' : ''}
                         >
@@ -630,7 +635,8 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
             </div>
 
             {/* 7. SEKCJA: AKTYWNE CYKLE TRENINGOWE (ZARZĄDZANIE I USUWANIE KONKRETNEGO CYKLU) */}
-            <div className="pt-3 border-t-2 border-zinc-800 space-y-2.5">
+            <div className="pt-2 space-y-2.5">
+              <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
               <div
                 onClick={() => setShowActiveCyclesSection((prev) => !prev)}
                 className="flex items-center justify-between cursor-pointer select-none py-1 group"
@@ -639,8 +645,8 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
                   <span className="text-xs font-bold text-zinc-200 uppercase tracking-wider group-hover:text-white">
                     Aktywne cykle w kalendarzu
                   </span>
-                  <span className="text-[10px] font-bold bg-black border border-zinc-700 px-2 py-0.5 text-red-400">
-                    {activeCycles.length}
+                  <span className="text-[10px] font-bold text-red-400">
+                    ({activeCycles.length})
                   </span>
                 </div>
                 <ChevronDown
@@ -651,9 +657,9 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
               </div>
 
               {showActiveCyclesSection && (
-                <div className="space-y-2 animate-in fade-in duration-100">
+                <div className="divide-y divide-zinc-800/60 animate-in fade-in duration-100">
                   {activeCycles.length === 0 ? (
-                    <div className="p-3 text-center bg-black/60 border border-zinc-900 text-xs text-zinc-500">
+                    <div className="py-3 text-center text-xs text-zinc-500">
                       Brak zarejestrowanych cykli w kalendarzu.
                     </div>
                   ) : (
@@ -669,14 +675,14 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
                       return (
                         <div
                           key={cycle.id}
-                          className="p-3 bg-black border border-zinc-800 flex items-center justify-between gap-3"
+                          className="py-2.5 flex items-center justify-between gap-3"
                         >
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-bold text-zinc-100 uppercase truncate">
                                 {cycle.routine_day_name}
                               </span>
-                              <span className="text-[9px] font-bold bg-red-950 border border-red-800 text-red-300 px-1.5 py-0.2 uppercase">
+                              <span className="text-[10px] font-bold text-red-400 uppercase">
                                 {cycle.mode === 'weekdays'
                                   ? `Dni: ${weekdayNames}`
                                   : `Co ${cycle.interval_days} dni`}
@@ -691,7 +697,7 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
                             type="button"
                             disabled={isDeleting}
                             onClick={() => handleDeleteSpecificCycle(cycle)}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-red-950/80 border border-red-800 hover:bg-red-900 hover:text-white text-rose-300 text-xs font-bold uppercase tracking-wider cursor-pointer shrink-0"
+                            className="flex items-center gap-1.5 px-2 py-1 text-rose-400 hover:bg-red-950/60 hover:text-white text-xs font-bold uppercase tracking-wider cursor-pointer shrink-0 transition-colors"
                             title="Usuń ten konkretny cykl z kalendarza"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -706,7 +712,7 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
 
                   {/* Opcja usunięcia pozostałych zaplanowanych sesji dla wybranego szablonu (np. starych) */}
                   {plannedSessionsForSelectedRoutineCount > 0 && (
-                    <div className="p-2.5 bg-zinc-950 border border-zinc-900 flex items-center justify-between gap-2 mt-2">
+                    <div className="py-2.5 flex items-center justify-between gap-2">
                       <div className="text-[11px] text-zinc-400 min-w-0">
                         <span>Zaplanowane sesje dla </span>
                         <strong className="text-zinc-200">{selectedRoutineDay?.name}</strong>:
@@ -718,7 +724,7 @@ export const RecurringWorkoutModal: React.FC<RecurringWorkoutModalProps> = ({
                         type="button"
                         disabled={isCleaningLegacy}
                         onClick={handleClearLegacySessions}
-                        className="px-2 py-1 bg-black border border-zinc-800 hover:border-red-900 text-[10px] font-bold text-zinc-400 hover:text-rose-400 uppercase tracking-wider cursor-pointer shrink-0"
+                        className="px-2 py-1 text-[10px] font-bold text-zinc-400 hover:text-rose-400 uppercase tracking-wider cursor-pointer shrink-0 transition-colors"
                       >
                         {isCleaningLegacy ? 'Czyszczenie...' : 'Wyczyść wszystkie'}
                       </button>

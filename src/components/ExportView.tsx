@@ -90,8 +90,8 @@ export const ExportView: React.FC = () => {
 
   return (
     <div className="space-y-4 max-w-xl mx-auto text-zinc-100 font-sans">
-      <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-5 border-2 border-zinc-700/80 space-y-4 shadow-lg shadow-black/50">
-        <div className="pb-3 border-b-2 border-zinc-800">
+      <div className="rounded-none bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-5 border border-zinc-800/80 space-y-4 shadow-md shadow-black/40">
+        <div>
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 bg-gradient-to-r from-red-600 to-red-800"></div>
             <span className="text-xs font-semibold text-red-500 uppercase tracking-wider">
@@ -106,29 +106,31 @@ export const ExportView: React.FC = () => {
           </p>
         </div>
 
+        <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
+
         {statusMsg && (
-          <div className="flex items-center gap-2 rounded-none bg-emerald-950/70 p-3 text-xs font-semibold text-emerald-300 border-2 border-emerald-800">
+          <div className="flex items-center gap-2 rounded-none bg-emerald-950/70 p-3 text-xs font-semibold text-emerald-300 border border-emerald-800">
             <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
             <span>{statusMsg}</span>
           </div>
         )}
 
         {errorMsg && (
-          <div className="flex items-center gap-2 rounded-none bg-red-950/70 p-3 text-xs font-semibold text-red-300 border-2 border-red-800">
+          <div className="flex items-center gap-2 rounded-none bg-red-950/70 p-3 text-xs font-semibold text-red-300 border border-red-800">
             <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
             <span>{errorMsg}</span>
           </div>
         )}
 
-        <div className="space-y-2.5 pt-1">
+        <div>
           {/* Export JSON Button */}
           <button
             onClick={handleExport}
             disabled={isProcessing}
-            className="flex w-full items-center justify-between rounded-none border-2 border-zinc-800 bg-gradient-to-r from-black via-zinc-950 to-black p-4 text-xs font-semibold text-white hover:border-red-700 hover:from-zinc-950 hover:to-zinc-900 transition-all disabled:opacity-50 cursor-pointer shadow-none"
+            className="flex w-full items-center justify-between rounded-none py-3.5 px-2 text-xs font-semibold text-white hover:bg-zinc-900/50 transition-colors disabled:opacity-50 cursor-pointer"
           >
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-none bg-gradient-to-b from-red-900 to-red-950 text-red-400 border border-red-700">
+              <div className="flex h-9 w-9 items-center justify-center rounded-none bg-gradient-to-b from-red-900 to-red-950 text-red-400 border border-red-800/80 shrink-0">
                 <Download className="h-4 w-4 stroke-[2.3]" />
               </div>
               <div className="text-left">
@@ -140,17 +142,19 @@ export const ExportView: React.FC = () => {
                 </span>
               </div>
             </div>
-            <span className="text-red-500 text-xs font-bold uppercase tracking-wider">Pobierz JSON</span>
+            <span className="text-red-500 text-xs font-bold uppercase tracking-wider shrink-0 ml-2">Pobierz JSON</span>
           </button>
+
+          <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
 
           {/* Export CSV Button */}
           <button
             onClick={handleExportCsv}
             disabled={isProcessing}
-            className="flex w-full items-center justify-between rounded-none border-2 border-zinc-800 bg-gradient-to-r from-black via-zinc-950 to-black p-4 text-xs font-semibold text-white hover:border-red-700 hover:from-zinc-950 hover:to-zinc-900 transition-all disabled:opacity-50 cursor-pointer shadow-none"
+            className="flex w-full items-center justify-between rounded-none py-3.5 px-2 text-xs font-semibold text-white hover:bg-zinc-900/50 transition-colors disabled:opacity-50 cursor-pointer"
           >
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-none bg-gradient-to-b from-red-950 to-zinc-900 text-red-500 border border-red-800">
+              <div className="flex h-9 w-9 items-center justify-center rounded-none bg-gradient-to-b from-red-950 to-zinc-900 text-red-500 border border-red-800/80 shrink-0">
                 <FileSpreadsheet className="h-4 w-4 stroke-[2.3]" />
               </div>
               <div className="text-left">
@@ -162,13 +166,15 @@ export const ExportView: React.FC = () => {
                 </span>
               </div>
             </div>
-            <span className="text-red-500 text-xs font-bold uppercase tracking-wider">Pobierz CSV</span>
+            <span className="text-red-500 text-xs font-bold uppercase tracking-wider shrink-0 ml-2">Pobierz CSV</span>
           </button>
 
+          <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
+
           {/* Import Button */}
-          <label className="flex w-full cursor-pointer items-center justify-between rounded-none border-2 border-zinc-800 bg-gradient-to-r from-black via-zinc-950 to-black p-4 text-xs font-semibold text-white hover:border-red-700 hover:from-zinc-950 hover:to-zinc-900 transition-all shadow-none">
+          <label className="flex w-full cursor-pointer items-center justify-between rounded-none py-3.5 px-2 text-xs font-semibold text-white hover:bg-zinc-900/50 transition-colors">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-none bg-zinc-900 text-zinc-300 border border-zinc-700">
+              <div className="flex h-9 w-9 items-center justify-center rounded-none bg-zinc-900 text-zinc-300 border border-zinc-800 shrink-0">
                 <Upload className="h-4 w-4 stroke-[2.3]" />
               </div>
               <div className="text-left">
@@ -180,7 +186,7 @@ export const ExportView: React.FC = () => {
                 </span>
               </div>
             </div>
-            <span className="text-red-500 text-xs font-bold uppercase tracking-wider">Wgraj</span>
+            <span className="text-red-500 text-xs font-bold uppercase tracking-wider shrink-0 ml-2">Wgraj</span>
             <input
               type="file"
               accept=".json,application/json"
