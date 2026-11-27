@@ -121,16 +121,11 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
       >
         {/* Header */}
         <div className="flex items-center justify-between pb-2.5 shrink-0">
-          <div>
-            <div className="flex items-center gap-2">
-              <div className="h-2 w-2 bg-gradient-to-r from-red-600 to-red-800"></div>
-              <span className="text-xs font-semibold text-red-500 uppercase tracking-wider">
-                Słownik ćwiczeń
-              </span>
-            </div>
-            <h3 className="text-base font-bold text-white tracking-wider uppercase mt-0.5">
-              {showCreateNew ? 'Nowe własne ćwiczenie' : 'Dodaj ćwiczenie'}
-            </h3>
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-2 bg-gradient-to-r from-red-600 to-red-800"></div>
+            <span className="text-xs font-semibold text-red-500 uppercase tracking-wider">
+              Słownik ćwiczeń
+            </span>
           </div>
           <button
             type="button"
@@ -308,15 +303,15 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
                       : 'hover:bg-zinc-900/60 text-zinc-100'
                   }`}
                 >
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
                     <div className="flex h-8 w-8 items-center justify-center rounded-none bg-black/80 border border-zinc-800/90 shrink-0 overflow-hidden">
                       <CategoryIcon muscleGroup={ex.muscle_group} className="w-6 h-6 object-contain opacity-85" />
                     </div>
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-bold text-white uppercase">{ex.name}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs font-bold text-white uppercase break-words">{ex.name}</span>
                         {isAlreadyAdded && (
-                          <span className="inline-flex items-center gap-0.5 rounded-none bg-zinc-900 border border-zinc-800 px-1.5 py-0.2 text-[9px] font-bold text-zinc-400 uppercase">
+                          <span className="inline-flex items-center gap-0.5 rounded-none bg-zinc-900 border border-zinc-800 px-1.5 py-0.2 text-[9px] font-bold text-zinc-400 uppercase shrink-0">
                             <Check className="h-2.5 w-2.5" /> W planie
                           </span>
                         )}
@@ -332,7 +327,7 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
 
                   <button
                     type="button"
-                    className="flex h-7 w-7 items-center justify-center rounded-none text-zinc-400 hover:bg-red-700 hover:text-white transition-colors cursor-pointer text-sm font-bold"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none text-zinc-400 hover:bg-red-700 hover:text-white transition-colors cursor-pointer text-sm font-bold"
                   >
                     +
                   </button>
