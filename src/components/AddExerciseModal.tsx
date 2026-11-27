@@ -113,18 +113,12 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/90 animate-in fade-in duration-200 font-sans cursor-pointer"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/90 animate-in fade-in duration-200 font-sans cursor-pointer"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{
-          paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom, 0px))',
-        }}
-        className="relative flex max-h-[88dvh] w-full max-w-lg flex-col rounded-none border border-zinc-800 bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-5 overflow-hidden text-zinc-100 shadow-2xl shadow-black/80 cursor-default"
+        className="relative flex max-h-[78vh] sm:max-h-[85vh] w-full max-w-lg flex-col rounded-none border border-zinc-800 bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-4 sm:p-5 overflow-hidden text-zinc-100 shadow-2xl shadow-black/80 cursor-default"
       >
-        {/* iOS Drag Handle */}
-        <div className="mx-auto -mt-1 mb-3 h-1 w-10 bg-zinc-700 sm:hidden shrink-0" />
-
         {/* Header */}
         <div className="flex items-center justify-between pb-2.5 shrink-0">
           <div>
