@@ -65,7 +65,7 @@ export default function App() {
 
   return (
     <div className="dark min-h-screen bg-[#09090b] text-zinc-100 flex flex-col font-sans selection:bg-red-950 selection:text-red-200 relative">
-      <div className="relative z-10 flex flex-col min-h-screen">
+      <div className="flex flex-col min-h-screen">
         {/* WYMUSZENIE CZCIONKI I SUROWEGO STYLU (Global Override - Brutalist Dark Mode) */}
         <style>{`
           *, *::before, *::after,
