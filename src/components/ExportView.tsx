@@ -99,11 +99,8 @@ export const ExportView: React.FC = () => {
             </span>
           </div>
           <h2 className="text-base font-bold text-white tracking-wider uppercase mt-0.5">
-            Eksport i import bazy danych
+            Eksport i import danych
           </h2>
-          <p className="text-xs text-zinc-400 mt-0.5">
-            Zarządzaj lokalną bazą danych w formacie JSON (IndexedDB)
-          </p>
         </div>
 
         <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
@@ -135,10 +132,10 @@ export const ExportView: React.FC = () => {
               </div>
               <div className="text-left">
                 <span className="block text-white font-bold text-sm uppercase tracking-wider">
-                  Eksportuj bazę (JSON)
+                  Eksportuj dane
                 </span>
                 <span className="block text-[11px] text-zinc-400">
-                  Pobierz pełną kopię zapasową rzeznik-backup.json
+                  Pobierz kopię zapasową rzeznik-backup.json
                 </span>
               </div>
             </div>
@@ -196,12 +193,6 @@ export const ExportView: React.FC = () => {
             />
           </label>
         </div>
-      </div>
-
-      <div className="px-3 text-center">
-        <p className="text-xs text-zinc-400">
-          Wszystkie dane zapisywane są wyłącznie w pamięci Twojej przeglądarki (100% offline).
-        </p>
       </div>
     </div>
   );
