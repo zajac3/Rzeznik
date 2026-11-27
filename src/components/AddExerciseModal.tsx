@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { X, Search, Check } from 'lucide-react';
-import { db, type Exercise, type MuscleGroup } from '../db/db';
+import { db, type MuscleGroup } from '../db/db';
 import { CategoryIcon } from '../utils/categoryIcons';
 
 interface AddExerciseModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelectExercise: (exerciseId: number) => void;
+  onSelectExercise: (exerciseId: number) => void | Promise<void>;
   existingExerciseIds?: number[];
 }
 
@@ -37,13 +37,24 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
   const [newName, setNewName] = useState('');
   const [newMuscle, setNewMuscle] = useState<MuscleGroup>('Klatka');
   const [newCalculate1RM, setNewCalculate1RM] = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const exercises = useLiveQuery(async () => {
     return await db.exercises.toArray();
   }, []);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setShowCreateNew(false);
+      setSearch('');
+      setSelectedMuscle('Wszystkie');
+      setNewName('');
+      setCreateError(null);
+      setIsCreating(false);
+      return;
+    }
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
@@ -61,19 +72,42 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
     return matchesSearch && matchesMuscle;
   });
 
+  const openCreateForm = (prefillName = '') => {
+    setNewName(prefillName);
+    setNewMuscle(selectedMuscle !== 'Wszystkie' ? selectedMuscle : 'Klatka');
+    setCreateError(null);
+    setShowCreateNew(true);
+  };
+
   const handleCreateExercise = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newName.trim()) return;
+    if (isCreating) return;
 
-    const id = await db.exercises.add({
-      name: newName.trim(),
-      muscle_group: newMuscle,
-      calculate_1rm: newCalculate1RM,
-    });
+    const trimmedName = newName.trim();
+    if (!trimmedName) {
+      setCreateError('Podaj nazwę ćwiczenia.');
+      return;
+    }
 
-    setNewName('');
-    setShowCreateNew(false);
-    onSelectExercise(id);
+    setIsCreating(true);
+    setCreateError(null);
+
+    try {
+      const id = await db.exercises.add({
+        name: trimmedName,
+        muscle_group: newMuscle,
+        calculate_1rm: newCalculate1RM,
+      });
+
+      await Promise.resolve(onSelectExercise(Number(id)));
+      setNewName('');
+      setShowCreateNew(false);
+    } catch (err) {
+      console.error('Błąd dodawania własnego ćwiczenia:', err);
+      setCreateError('Nie udało się zapisać ćwiczenia. Spróbuj ponownie.');
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   return (
@@ -83,13 +117,16 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative flex max-h-[88vh] w-full max-w-lg flex-col rounded-none border border-zinc-800 bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-5 overflow-hidden text-zinc-100 shadow-2xl shadow-black/80 cursor-default"
+        style={{
+          paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom, 0px))',
+        }}
+        className="relative flex max-h-[88dvh] w-full max-w-lg flex-col rounded-none border border-zinc-800 bg-gradient-to-b from-zinc-900 via-[#121215] to-zinc-950 p-5 overflow-hidden text-zinc-100 shadow-2xl shadow-black/80 cursor-default"
       >
         {/* iOS Drag Handle */}
-        <div className="mx-auto -mt-1 mb-3 h-1 w-10 bg-zinc-700 sm:hidden" />
+        <div className="mx-auto -mt-1 mb-3 h-1 w-10 bg-zinc-700 sm:hidden shrink-0" />
 
         {/* Header */}
-        <div className="flex items-center justify-between pb-2.5">
+        <div className="flex items-center justify-between pb-2.5 shrink-0">
           <div>
             <div className="flex items-center gap-2">
               <div className="h-2 w-2 bg-gradient-to-r from-red-600 to-red-800"></div>
@@ -98,21 +135,23 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
               </span>
             </div>
             <h3 className="text-base font-bold text-white tracking-wider uppercase mt-0.5">
-              Dodaj ćwiczenie
+              {showCreateNew ? 'Nowe własne ćwiczenie' : 'Dodaj ćwiczenie'}
             </h3>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="rounded-none p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer"
+            aria-label="Zamknij"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
+        <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent shrink-0" />
 
         {/* Search & Muscle Filters */}
         {!showCreateNew && (
-          <div className="mt-3 space-y-2.5">
+          <div className="mt-3 space-y-2.5 shrink-0">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
               <input
@@ -129,6 +168,7 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
               {MUSCLE_GROUPS.map((grp) => (
                 <button
                   key={grp}
+                  type="button"
                   onClick={() => setSelectedMuscle(grp)}
                   className={`whitespace-nowrap rounded-none px-3 py-1 text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
                     selectedMuscle === grp
@@ -144,7 +184,11 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
         )}
 
         {/* Content list / Creation form */}
-        <div className="mt-3 flex-1 overflow-y-auto pr-1 max-h-[50vh] divide-y divide-zinc-800/50">
+        <div
+          className={`mt-3 flex-1 min-h-0 overflow-y-auto pr-1 ${
+            showCreateNew ? '' : 'divide-y divide-zinc-800/50'
+          }`}
+        >
           {showCreateNew ? (
             <form onSubmit={handleCreateExercise} className="space-y-3 py-1">
               <div className="flex items-center justify-between pb-1">
@@ -153,7 +197,10 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
                 </h4>
                 <button
                   type="button"
-                  onClick={() => setShowCreateNew(false)}
+                  onClick={() => {
+                    setCreateError(null);
+                    setShowCreateNew(false);
+                  }}
                   className="text-xs text-red-500 hover:text-red-400 font-bold uppercase cursor-pointer"
                 >
                   Anuluj
@@ -168,9 +215,13 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
                 <input
                   type="text"
                   required
+                  autoFocus
                   placeholder="np. Hack Przysiad..."
                   value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
+                  onChange={(e) => {
+                    setNewName(e.target.value);
+                    if (createError) setCreateError(null);
+                  }}
                   className="w-full rounded-none border border-zinc-700 bg-black px-3 py-2 text-xs text-white focus:border-red-600 focus:outline-none"
                 />
               </div>
@@ -210,20 +261,31 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
                 </label>
               </div>
 
+              {createError && (
+                <div className="p-2.5 bg-red-950/70 border border-red-700 text-xs font-semibold text-red-300">
+                  {createError}
+                </div>
+              )}
+
               <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowCreateNew(false)}
-                  className="rounded-none border border-zinc-800 bg-black px-3 py-1.5 text-xs font-bold uppercase text-zinc-400 hover:text-white cursor-pointer"
+                  onClick={() => {
+                    setCreateError(null);
+                    setShowCreateNew(false);
+                  }}
+                  disabled={isCreating}
+                  className="rounded-none border border-zinc-800 bg-black px-3 py-1.5 text-xs font-bold uppercase text-zinc-400 hover:text-white cursor-pointer disabled:opacity-50"
                 >
                   Powrót
                 </button>
                 <button
                   type="submit"
+                  disabled={isCreating}
                   style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
-                  className="rounded-none bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider px-4 py-2 text-xs transition-colors cursor-pointer"
+                  className="rounded-none bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 disabled:opacity-50 text-white font-bold uppercase tracking-wider px-4 py-2 text-xs transition-colors cursor-pointer"
                 >
-                  Zapisz ćwiczenie
+                  {isCreating ? 'Zapisywanie...' : 'Zapisz ćwiczenie'}
                 </button>
               </div>
             </form>
@@ -232,10 +294,7 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
               <p className="text-xs text-zinc-400">Brak ćwiczenia „{search}” w słowniku.</p>
               <button
                 type="button"
-                onClick={() => {
-                  setNewName(search);
-                  setShowCreateNew(true);
-                }}
+                onClick={() => openCreateForm(search)}
                 style={{ clipPath: 'polygon(5% 0, 100% 0, 95% 100%, 0 100%)' }}
                 className="mt-2 inline-flex items-center gap-1.5 rounded-none bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold uppercase tracking-wider px-4 py-2 text-xs transition-colors cursor-pointer"
               >
@@ -291,18 +350,16 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
 
         {/* Footer */}
         {!showCreateNew && (
-          <div className="mt-3 space-y-2.5">
+          <div className="mt-3 space-y-2.5 shrink-0">
             <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-700/75 to-transparent" />
             <div className="flex items-center justify-between pt-0.5">
               <span className="text-xs text-zinc-400">
                 {filtered.length} ćwiczeń w słowniku
               </span>
               <button
-                onClick={() => {
-                  setNewName('');
-                  setShowCreateNew(true);
-                }}
-                className="text-xs font-bold uppercase tracking-wider text-red-500 hover:text-red-400 cursor-pointer"
+                type="button"
+                onClick={() => openCreateForm(search.trim())}
+                className="px-2.5 py-1.5 border border-red-900/60 bg-red-950/30 hover:bg-red-950/60 text-xs font-bold uppercase tracking-wider text-red-400 hover:text-red-300 transition-colors cursor-pointer"
               >
                 + Własne ćwiczenie
               </button>
